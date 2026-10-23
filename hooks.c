@@ -224,8 +224,6 @@ static struct config {
     UCHAR MinAlpha;
     char AlphaDelta;
     char AlphaDeltaShift;
-    UCHAR ZoomFrac;
-    UCHAR ZoomFracShift;
     UCHAR NumberMenuItems;
     UCHAR MaxMenuWidth;
     UCHAR AeroSpeedTau;
@@ -334,8 +332,6 @@ static const struct OptionListItem Advanced_uchars[] = {
     { "MinAlpha", 32 },
     { "AlphaDelta", 64 },
     { "AlphaDeltaShift", 8 },
-    { "ZoomFrac", 16 },
-    { "ZoomFracShift", 64 },
     { "NumberMenuItems", 0},
     { "MaxMenuWidth", 80},
     { "AeroSpeedTau", 64 },
@@ -3629,86 +3625,61 @@ static void RollWindow(HWND hwnd, int delta)
     }
 }
 
+// Preset zoom levels (window outer size in pixels)
+static const struct { WORD w, h; } ZoomLevels[] = {
+    { 640, 480}, { 720, 480}, { 720, 576}, { 800, 600},
+    {1024, 768}, {1152, 864}, {1280, 720}, {1280, 768}, {1280, 800},
+    {1280, 960}, {1280,1024}, {1360, 768}, {1400,1050},
+    {1440, 900}, {1600, 900}, {1680,1050}
+};
 static int ActionZoom(HWND hwnd, short delta, short center)
 {
-    if(!IsResizable(hwnd)) return 0;
+    (void)center; // Zoom levels are always applied around the window center
+    if(!IsResizable(hwnd) || delta == 0) return 0;
 
-    RECT rc, orc;
+    RECT rc;
     GetWindowRect(hwnd, &rc);
+    const int curw = rc.right - rc.left;
+    const int curh = rc.bottom - rc.top;
+
+    // Find the zoom level closest to the current window size.
+    int best = 0;
+    int bestdist = 0x7FFFFFFF;
+    for (size_t i=0; i < ARR_SZ(ZoomLevels); i++) {
+        int dw = curw - ZoomLevels[i].w;
+        int dh = curh - ZoomLevels[i].h;
+        int dist = dw*dw + dh*dh;
+        if (dist < bestdist) { bestdist = dist; best = i; }
+    }
+
+    // Step to the next/previous level according to the scroll direction.
+    int idx = best;
+    if (delta > 0) {        // Zoom in
+        if (curw >= ZoomLevels[best].w) idx = best + 1;
+    } else {                // Zoom out
+        if (curw <= ZoomLevels[best].w) idx = best - 1;
+    }
+
+    // Once the smallest/biggest level is reached, do nothing at all
+    // (this also avoids un-maximizing a window for no reason).
+    if (idx < 0 || idx >= (int)ARR_SZ(ZoomLevels))
+        return 0;
+
     if (IsZoomed(hwnd)) RestoreToMonitorSize(hwnd, &rc);
     ClearRestoreFlagOnResizeIfNeeded(hwnd);
-    SetEdgeAndOffset(&rc, state.prevpt);
     OffsetRectMDI(&rc);
-    CopyRect(&orc, &rc);
-
-    int left=0, right=0, top=0, bottom=0;
-    int div = state.shift ? conf.ZoomFracShift: conf.ZoomFrac;
-    // We increase/decrease at least 1 pixel or SnapThreshold/2.
-    UCHAR T = state.shift? 1: conf.SnapThreshold/2+1;
-    UCHAR CT = !center ^ !IsCtrlDown()
-             || (state.resize.x == RZ_XCENTER && state.resize.y == RZ_YCENTER);
-
-    if (!conf.AutoSnap
-    || (CT && (state.resize.x == RZ_XCENTER || state.resize.y == RZ_YCENTER)) )
-    {   // Try to conserve a bit better the aspect ratio when in center mode.
-        T = 1; // Or when no snapping has to occur.
-    }
 
     rgMMI_t mmi;
-    GetMinMaxInfo(hwnd, &mmi.Min, &mmi.Max); // for CLAMPH/W functions
+    GetMinMaxInfo(hwnd, &mmi.Min, &mmi.Max); // for CLAMPWL/CLAMPHL functions
 
-    if (state.resize.x == RZ_LEFT) {
-        right = max(T, (rc.right-rc.left)/div);
-        state.resize.x = RZ_RIGHT;
-    } else if (state.resize.x == RZ_RIGHT) {
-        left  = max(T, (rc.right-rc.left)/div);
-        state.resize.x = RZ_LEFT;
-    } else if (state.resize.x == RZ_XCENTER && CT) {
-        left  = max(T, (state.prevpt.x-rc.left)  /div);
-        right = max(T, (rc.right-state.prevpt.x) /div);
-    }
-
-    if (state.resize.y == RZ_TOP) {
-        bottom = max(T, (rc.bottom-rc.top)/div);
-        state.resize.y = RZ_BOTTOM;
-    } else if (state.resize.y == RZ_BOTTOM) {
-        top    = max(T, (rc.bottom-rc.top)/div);
-        state.resize.y = RZ_TOP;
-    } else if (state.resize.y == RZ_YCENTER && CT) {
-        top   = max(T, (state.prevpt.y-rc.top)   /div);
-        bottom= max(T, (rc.bottom-state.prevpt.y)/div);
-    }
-    if (delta < 0) {
-        // Zoom out
-        rc.left += left;
-        rc.right -= right;
-        rc.top += top;
-        rc.bottom -= bottom;
-    } else {
-        // Zoom in
-        rc.left -= left;
-        rc.right +=right;
-        rc.top -= top;
-        rc.bottom += bottom;
-    }
-
-    int x = rc.left, y = rc.top, width = rc.right-rc.left, height= rc.bottom-rc.top;
+    // Apply the level size while keeping the window center unchanged.
+    int width  = CLAMPWL(ZoomLevels[idx].w, &mmi);
+    int height = CLAMPHL(ZoomLevels[idx].h, &mmi);
+    int x = (rc.left + rc.right )/2 - width /2;
+    int y = (rc.top  + rc.bottom)/2 - height/2;
 
     state.hwnd = hwnd;
-    state.snap = conf.AutoSnap; // Only use autosnap setting.
-
-    ResizeSnap(&x, &y, &width, &height
-              , min( max(left, right)-1, conf.SnapThreshold )  // initial x threshold
-              , min( max(top, bottom)-1, conf.SnapThreshold ) );// initial y threshold
-    // Make sure that the windows does not move
-    // in case it is resized from bottom/right
-    if (state.resize.x == RZ_LEFT) x = x+width - CLAMPWL(width, &mmi);
-    if (state.resize.y == RZ_TOP) y = y+height - CLAMPHL(height, &mmi);
-    // Avoid runaway effect when zooming in/out too much.
-    if (state.resize.x == RZ_XCENTER && !ISCLAMPEDWL(width, &mmi)) x = orc.left;
-    if (state.resize.y == RZ_YCENTER && !ISCLAMPEDHL(height, &mmi)) y = orc.top;
-    width = CLAMPWL(width, &mmi); // Double check
-    height = CLAMPHL(height, &mmi);
+    state.snap = 0; // Use the exact level size, do not snap.
 
     MoveWindowAsync(hwnd, x, y, width, height);
     return 1;
@@ -6704,8 +6675,6 @@ __declspec(dllexport) WNDPROC WINAPI Load(HWND mainhwnd, const TCHAR *inipath)
     GetPrivateProfileSection(TEXT("Advanced"), inisection, inisectionlen, inipath);
     readalluchars(&conf.ResizeAll, inisection, Advanced_uchars, ARR_SZ(Advanced_uchars));
 
-    conf.ZoomFrac      = max(2, conf.ZoomFrac);
-    conf.ZoomFracShift = max(2, conf.ZoomFracShift);
     conf.BLCapButtons  = (DWORD)GetSectionOptionInt(inisection, "BLCapButtons", 3);
     conf.BLUpperBorder = (DWORD)GetSectionOptionInt(inisection, "BLUpperBorder", 3);
     conf.AeroMaxSpeed  = GetSectionOptionInt(inisection, "AeroMaxSpeed", MAX_SNAP_SPEED);

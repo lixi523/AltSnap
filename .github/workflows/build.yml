@@ -1,0 +1,81 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            msystem: MINGW64
+            makefile: MakefileX64
+            package: AltSnap-bin-x64
+          - arch: x86
+            msystem: MINGW32
+            makefile: Makefile
+            package: AltSnap-bin-x86
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 (${{ matrix.msystem }})
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            make
+            ${{ matrix.msystem == 'MINGW64' && 'mingw-w64-x86_64-gcc' || 'mingw-w64-i686-gcc' }}
+
+      - name: Build (${{ matrix.makefile }})
+        shell: msys2 {0}
+        run: make -f${{ matrix.makefile }}
+
+      - name: Package ${{ matrix.package }}
+        shell: pwsh
+        run: |
+          $pkg = "pkg"
+          Remove-Item -Recurse -Force $pkg -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "$pkg/Lang", "$pkg/Themes" | Out-Null
+          Copy-Item -Force AltSnap.exe, hooks.dll, AltSnap.txt, AltSnap.xml, License.txt, AltSnap.dni -Destination $pkg -ErrorAction SilentlyContinue
+          Copy-Item -Force -Recurse Lang/* -Destination "$pkg/Lang"
+          Copy-Item -Force -Recurse Themes/* -Destination "$pkg/Themes"
+          Compress-Archive -Force -Path "$pkg/*" -DestinationPath "${{ matrix.package }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}
+          path: ${{ matrix.package }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true

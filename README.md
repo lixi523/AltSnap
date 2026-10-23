@@ -1,4 +1,4 @@
-English | [中文](./README_zh-CN.md) | [한국어](./README_ko-KR.md)
+English | [中文](./README_zh-CN.md)
 # AltSnap
 Fork from Stefan Sundin's AltDrag.
 

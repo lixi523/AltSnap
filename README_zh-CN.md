@@ -1,4 +1,4 @@
-[English](./README.md) | 中文 | [한국어](./README_ko-KR.md)
+[English](./README.md) | 中文
 # AltSnap
 由Stefan Sundin的AltDrag制作的一个的分支。
 
