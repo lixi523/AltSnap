@@ -31,6 +31,22 @@ WHAT'S NEW
 
 Many new features can be seen in the option dialog box, however some of them are only available through editing the AltSnap.ini file (middle click on tyhe tray icon for this).
 
+# Changes in this fork
+
+This fork (lixi523/AltSnap) adds a few things on top of the upstream code:
+
+- The **Zoom** action now steps the window size through a fixed list of preset resolutions
+  (640x480, 720x480, 720x576, 800x600, 1024x768, 1152x864, 1280x720, 1280x768, 1280x800,
+  1280x960, 1280x1024, 1360x768, 1400x1050, 1440x900, 1600x900, 1680x1050) instead of scaling
+  by a fraction. The window stays centered and stops once the smallest/biggest level is reached.
+- A new **"Resize to ..."** entry in the action menu (placed between *Maximize* and *Minimize*)
+  opens a submenu with the same preset sizes; selecting one resizes the window to that size while
+  keeping its top-left corner fixed.
+- Only the **English** and **Simplified Chinese** translations are shipped.
+- A GitHub Actions workflow builds the 32-bit/64-bit binaries and publishes releases.
+
+Version 1.69 includes these changes.
+
 # VirusTotal false positive
 You will see with the latest builds that there are some alerts, usually from SecureAge APEX and sometimes from other vendors. Those are false positives, and I stopped contacting the APEX team for every release because it is a waste of time I would rather spend on improving the program.
 I already reduced the number of false positives significantly, simply by changing build flags and by switching to an older version of the NSIS installer system. This is an indication of the impertinence of some modern antivirus solutions. Chocolatey considers that up to five positives on VirusTotal is not even suspicious.
