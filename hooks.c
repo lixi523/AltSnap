@@ -3626,12 +3626,34 @@ static void RollWindow(HWND hwnd, int delta)
 }
 
 // Preset zoom levels (window outer size in pixels)
-static const struct { WORD w, h; } ZoomLevels[] = {
-    { 640, 480}, { 720, 480}, { 720, 576}, { 800, 600},
-    {1024, 768}, {1152, 864}, {1280, 720}, {1280, 768}, {1280, 800},
-    {1280, 960}, {1280,1024}, {1360, 768}, {1400,1050},
-    {1440, 900}, {1600, 900}, {1680,1050}
-};
+static const struct { WORD w, h; } ZoomLevels[] = { ZOOM_LEVELS_MAP };
+
+// Resize the window to a preset level size, keeping the top-left corner.
+static int ResizeToLevel(HWND hwnd, int level)
+{
+    if (!IsResizable(hwnd) || level < 0 || level >= (int)ARR_SZ(ZoomLevels))
+        return 0;
+
+    RECT rc;
+    GetWindowRect(hwnd, &rc);
+    if (IsZoomed(hwnd)) RestoreToMonitorSize(hwnd, &rc);
+    ClearRestoreFlagOnResizeIfNeeded(hwnd);
+    OffsetRectMDI(&rc);
+
+    rgMMI_t mmi;
+    GetMinMaxInfo(hwnd, &mmi.Min, &mmi.Max); // for CLAMPWL/CLAMPHL functions
+
+    int width  = CLAMPWL(ZoomLevels[level].w, &mmi);
+    int height = CLAMPHL(ZoomLevels[level].h, &mmi);
+    int x = rc.left; // Keep the top-left corner unchanged
+    int y = rc.top;
+
+    state.hwnd = hwnd;
+    state.snap = 0; // Use the exact level size, do not snap.
+
+    MoveWindowAsync(hwnd, x, y, width, height);
+    return 1;
+}
 static int ActionZoom(HWND hwnd, short delta, short center)
 {
     (void)center; // Zoom levels are always applied around the window center
@@ -4864,6 +4886,7 @@ static void SClickActions(HWND hwnd, action_t action)
     switch (action.ac) {
     case AC_MINIMIZE:    MinimizeWindow(hwnd); break;
     case AC_MAXIMIZE:    ActionMaximize(hwnd); break;
+    case AC_RSIZE:       ResizeToLevel(hwnd, action.wp); break;
     case AC_CENTER:      CenterWindow(hwnd, !state.shift  /*state.shift? 0: CW_RESTORE*/, 0); break;
     case AC_CENTER2:     CenterWindow(hwnd, !state.shift, /*full*/ 1); break;
     case AC_ALWAYSONTOP: TogglesAlwaysOnTop(hwnd); break;
@@ -6005,7 +6028,10 @@ LRESULT CALLBACK MenuWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         } else if (HIWORD(wParam) && IsWindow(state.sclickhwnd) ) {
             // ACTION MENU LOWORD(wParam) has to be zero to differenctiae with unikey menu
             LOG("Action Menu WM_COMMAND, wp=%X, lp=%X", (UINT)wParam, (UINT)lParam);
-            action_t action = { HIWORD(wParam), 0, 0 }; // TOTO: FIXME!!!!!!!
+            action_t action = { (BYTE)HIWORD(wParam), 0, 0 };
+            // The resize action encodes the level number in the high byte.
+            if (action.ac == AC_RSIZE)
+                action.wp = (short)HIBYTE((WORD)HIWORD(wParam)) - 1;
             if (action.ac) {
                 state.prevpt = state.clickpt;
                 if(action.ac == AC_ORICLICK) {

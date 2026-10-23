@@ -144,6 +144,9 @@ void ShowSClickMenu(HWND hwnd, LPARAM param)
 
     #define CHK(LP_FLAG) (WORD)( MF_STRING | ((param&LP_FLAG) ? MF_CHECKED : MF_UNCHECKED) )
 
+    // Resize levels (window outer size in pixels), used by the Resize submenu.
+    static const struct { WORD w, h; } ResizeLevels[] = { ZOOM_LEVELS_MAP };
+
     const struct {
         UCHAR action; WORD mf; short l10nidx;
     } mnlst[] = {
@@ -159,6 +162,7 @@ void ShowSClickMenu(HWND hwnd, LPARAM param)
         { AC_SIDESNAP,    MF_STRING,          L10NIDX(InputActionSideSnap) },
         { 0,              MF_SEPARATOR, -1 }, /* ------------------------ */
         { AC_MAXIMIZE,    CHK(LP_MAXIMIZED),  L10NIDX(InputActionMaximize) },
+        { AC_RSIZE,       MF_POPUP,           L10NIDX(InputActionResizeLevel) },
         { AC_MINIMIZE,    MF_STRING,          L10NIDX(InputActionMinimize) },
         { AC_CLOSE,       MF_STRING,          L10NIDX(InputActionClose) },
         { 0,              MF_SEPARATOR, -1 }, /* ------------------------ */
@@ -175,7 +179,20 @@ void ShowSClickMenu(HWND hwnd, LPARAM param)
     for (i=0; i < ARR_SZ(mnlst); i++) {
         if ( (ACMenuItems>>i)&1 && mnlst[i].action != 0xFF) {// Put the action in the HIWORD of wParam
             const TCHAR *str = mnlst[i].l10nidx >= 0 ? L10NSTR(mnlst[i].l10nidx) : NULL;
-            AppendMenu(menu, mnlst[i].mf, mnlst[i].action<<16, str);
+            if (mnlst[i].mf & MF_POPUP) {
+                // "Resize" submenu: one entry per preset size.
+                HMENU sub = CreatePopupMenu();
+                size_t lv;
+                for (lv=0; lv < ARR_SZ(ResizeLevels); lv++) {
+                    TCHAR buf[16];
+                    wsprintf(buf, TEXT("%ux%u"), (unsigned)ResizeLevels[lv].w, (unsigned)ResizeLevels[lv].h);
+                    // Encode the level number in the high byte of the menu id.
+                    AppendMenu(sub, MF_STRING, ((UINT)AC_RSIZE | ((UINT)(lv+1)<<8)) << 16, buf);
+                }
+                AppendMenu(menu, MF_POPUP, (UINT_PTR)sub, str);
+            } else {
+                AppendMenu(menu, mnlst[i].mf, mnlst[i].action<<16, str);
+            }
         }
     }
     TrackPopupMenu(menu, GetSystemMetrics(SM_MENUDROPALIGNMENT), pt.x, pt.y, 0, hwnd, NULL);

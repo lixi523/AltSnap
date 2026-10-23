@@ -161,6 +161,7 @@ struct langinfoitem {
   LNGVALUE(InputActionTransparency, TEXT("Transparency"), NULL) \
   LNGVALUE(InputActionZoom,         TEXT("Zoom window"), NULL) \
   LNGVALUE(InputActionZoom2,        TEXT("Zoom window 2"), NULL) \
+  LNGVALUE(InputActionResizeLevel,  TEXT("Resize to ..."), NULL) \
   LNGVALUE(InputActionHScroll,      TEXT("Horizontal scroll"), NULL) \
   LNGVALUE(InputActionNPLayout,     TEXT("Next/Prev Snap Layout"), NULL) \
   LNGVALUE(InputActionNLayout,     TEXT("Next Snap Layout"), NULL) \

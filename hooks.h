@@ -155,11 +155,20 @@
     ACVALUE(AC_ZOOM,         Zoom,         MR) \
     ACVALUE(AC_ZOOM2,        Zoom2,        MR) \
     ACVALUE(AC_NPSTACKED,    NPStacked,    ZO) \
-    ACVALUE(AC_NPSTACKED2,   NPStacked2,   ZO)
+    ACVALUE(AC_NPSTACKED2,   NPStacked2,   ZO) \
+    ACVALUE(AC_RSIZE,        ResizeLevel, 00)
 
 #define ACVALUE(a, b, c) a,
 enum action { ACTION_MAP AC_MAXVALUE, AC_ORICLICK };
 #undef ACVALUE
+
+// Preset window sizes (outer size in pixels) shared by the Zoom action
+// and the "Resize" entry of the action menu.
+#define ZOOM_LEVELS_MAP \
+    { 640, 480}, { 720, 480}, { 720, 576}, { 800, 600}, \
+    {1024, 768}, {1152, 864}, {1280, 720}, {1280, 768}, {1280, 800}, \
+    {1280, 960}, {1280,1024}, {1360, 768}, {1400,1050}, \
+    {1440, 900}, {1600, 900}, {1680,1050}
 
 typedef struct rgTagAction {
     BYTE  ac;

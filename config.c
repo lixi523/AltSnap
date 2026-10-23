@@ -883,6 +883,7 @@ static INT_PTR CALLBACK MousePageDialogProc(HWND hwnd, UINT msg, WPARAM wParam, 
         {TEXT("Kill"),        L10NIDX(InputActionKill) },    \
         {TEXT("Minimize"),    L10NIDX(InputActionMinimize) }, \
         {TEXT("Maximize"),    L10NIDX(InputActionMaximize) }, \
+        {TEXT("ResizeLevel"), L10NIDX(InputActionResizeLevel) }, \
         {TEXT("Lower"),       L10NIDX(InputActionLower) },    \
         {TEXT("Focus"),       L10NIDX(InputActionFocus) },    \
         {TEXT("NStacked"),    L10NIDX(InputActionNStacked) }, \
