@@ -1,7 +1,7 @@
 *=========================================================================*
 *            ALTSNAP for Windows NT4/2000/XP/Vista/7/8.x/10/11            *
 *  Modified by Raymond Gillibert from original AltDrag by Stefan Sundin   *
-*                     release 1.67 (November 15, 2025)                    *
+*                     release 1.69 (October 23, 2026)                     *
 *-------------------------------------------------------------------------*
 * Download MEGA: https://mega.nz/folder/mW5ExCCT#gI8DQICICk-y4FIjxaqtGg   *
 * Download GitHub: https://github.com/RamonUnch/AltSnap/releases/         *
@@ -183,6 +183,30 @@ Note that this version has some more feature.
 
 ===========================================================================
 == CHANGELOG ==
+
+== AltSnap 1.69 ==
+
+ + The **Zoom** action now steps through a list of fixed window size
+   levels instead of scaling proportionally:
+   640x480, 720x480, 720x576, 800x600, 1024x768, 1152x864, 1280x720,
+   1280x768, 1280x800, 1280x960, 1280x1024, 1360x768, 1400x1050,
+   1440x900, 1600x900, 1680x1050.
+   The window stays centered while zooming, and nothing happens once
+   the smallest/largest level is reached.
+
+ + Add a **Resize** entry to the action menu, placed between Maximize
+   and Minimize. It opens a submenu listing the same preset sizes and
+   resizes the window keeping its top-left corner unchanged.
+   The action is also available as a mouse/keyboard action (ResizeLevel).
+
+ + Translations were trimmed down to English (built-in) and Simplified
+   Chinese (Lang/zh_CN.ini); all other language files were removed.
+
+ + Add a GitHub Actions workflow building the 32-bit and 64-bit
+   binaries and publishing releases when a tag is pushed.
+
+ * Fixed .gitattributes so that UTF-16 encoded language files are no
+   longer corrupted on checkout.
 
 == AltSnap 1.67 ==
 
