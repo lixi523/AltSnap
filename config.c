@@ -2480,6 +2480,8 @@ static INT_PTR CALLBACK AwakePageDialogProc(HWND hwnd, UINT msg, WPARAM wParam, 
                 { IDC_AWAKE_MODE_COUNTDOWN,L10NIDX(AwakeModeCountdown) },
                 { IDC_AWAKE_MODE_SCHEDULE, L10NIDX(AwakeModeSchedule) },
                 { IDC_AWAKE_RANGES_BOX,    L10NIDX(AwakeRangesBox) },
+                { IDC_AWAKE_ADDRANGE,      L10NIDX(AwakeAddBtn) },
+                { IDC_AWAKE_DELRANGE,      L10NIDX(AwakeDelBtn) },
                 { IDC_AWAKE_HINT,          L10NIDX(AwakeHint) },
             };
             UpdateDialogStrings(hwnd, strlst, ARR_SZ(strlst));
