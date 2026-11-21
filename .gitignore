@@ -11,3 +11,7 @@ AltSnap.ini
 *.zip
 pkg/
 dist/
+
+# Local toolchain and session attachments (never commit)
+tools/
+.loomy-attachments/

@@ -20,6 +20,7 @@
 #define IDD_ADVANCEDPAGE                 205
 #define IDD_ABOUTPAGE                    206
 #define IDD_ACTIONPARAM                  207
+#define IDD_AWAKEPAGE                    208
 
 #define IDI_FIND                         301
 #define IDI_BIGICON                      302
@@ -210,5 +211,22 @@
 #define IDC_SHORTCUTS_CLEAR             2105
 #define IDC_USEPTWINDOW                 2106
 #define IDC_SIDESFRACTION               2107
+
+// Awake page (keep screen awake)
+#define IDC_AWAKE_BOX                   2200
+#define IDC_AWAKE_ENABLED               2201
+#define IDC_AWAKE_MODE_CONT             2202
+#define IDC_AWAKE_MODE_COUNTDOWN        2203
+#define IDC_AWAKE_MODE_SCHEDULE         2204
+#define IDC_AWAKE_CD_MIN                2205
+#define IDC_AWAKE_RANGES_BOX            2206
+#define IDC_AWAKE_SH                    2207
+#define IDC_AWAKE_SM                    2208
+#define IDC_AWAKE_EH                    2209
+#define IDC_AWAKE_EM                    2210
+#define IDC_AWAKE_ADDRANGE              2211
+#define IDC_AWAKE_DELRANGE              2212
+#define IDC_AWAKE_RANGELIST             2213
+#define IDC_AWAKE_HINT                  2214
 
 #endif // AS_RESOURCE_H

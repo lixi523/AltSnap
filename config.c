@@ -23,6 +23,7 @@ static INT_PTR CALLBACK KeyboardPageDialogProc(HWND, UINT, WPARAM, LPARAM);
 static INT_PTR CALLBACK BlacklistPageDialogProc(HWND, UINT, WPARAM, LPARAM);
 static INT_PTR CALLBACK AboutPageDialogProc(HWND, UINT, WPARAM, LPARAM);
 static INT_PTR CALLBACK AdvancedPageDialogProc(HWND, UINT, WPARAM, LPARAM);
+static INT_PTR CALLBACK AwakePageDialogProc(HWND, UINT, WPARAM, LPARAM);
 static LRESULT CALLBACK FindWindowProc(HWND, UINT, WPARAM, LPARAM);
 
 HWND g_cfgwnd = NULL;
@@ -129,6 +130,7 @@ static void OpenConfig(int startpage)
         { IDD_KBPAGE,        (DLGPROC)KeyboardPageDialogProc },
         { IDD_BLACKLISTPAGE, (DLGPROC)BlacklistPageDialogProc},
         { IDD_ADVANCEDPAGE,  (DLGPROC)AdvancedPageDialogProc },
+        { IDD_AWAKEPAGE,     (DLGPROC)AwakePageDialogProc },
         { IDD_ABOUTPAGE,     (DLGPROC)AboutPageDialogProc    }
     };
     PROPSHEETPAGE psp[ARR_SZ(pages)];
@@ -184,13 +186,14 @@ static void UpdateStrings(void)
     // tc = PropSheet_GetTabControl(g_cfgwnd);
     HWND tc = (HWND)SendMessage(g_cfgwnd, PSM_GETTABCONTROL, 0, 0);
     int numrows_prev = TabCtrl_GetRowCount(tc);
-    const TCHAR *titles[6];
+    const TCHAR *titles[7];
     titles[0] = l10n->ConfigTabGeneral;
     titles[1] = l10n->ConfigTabMouse;
     titles[2] = l10n->ConfigTabKeyboard;
     titles[3] = l10n->ConfigTabBlacklist;
     titles[4] = l10n->ConfigTabAdvanced;
-    titles[5] = l10n->ConfigTabAbout;
+    titles[5] = l10n->ConfigTabAwake;
+    titles[6] = l10n->ConfigTabAbout;
     for (size_t i = 0; i < ARR_SZ(titles); i++) {
         TCITEM ti;
         ti.mask = TCIF_TEXT;
@@ -2341,6 +2344,157 @@ static INT_PTR CALLBACK AdvancedPageDialogProc(HWND hwnd, UINT msg, WPARAM wPara
             // Update Test windows in if open.
             EnumThreadWindows(GetCurrentThreadId(), RefreshTestWin, 0);
             have_to_apply = 0;
+        }
+    }
+    return FALSE;
+}
+/////////////////////////////////////////////////////////////////////////////
+// Awake page (keep screen awake). Core logic lives in awake.c, which is
+// included from altsnap.c BEFORE config.c, so the awake_* state below is
+// accessible. NEVER move Awake code to hooks.c (thread-level API risk).
+static int AwakePageHaveToApply = 0;
+static int AwakePageEditingIdx = -1; // -1 = add mode, else editing that range
+
+static void AwakePageRefresh(HWND hwnd, int refill)
+{
+    if (refill) {
+        // Sync controls from the runtime state (the tray may have toggled).
+        CheckDlgButton(hwnd, IDC_AWAKE_ENABLED, awake_enabled? BST_CHECKED: BST_UNCHECKED);
+        CheckRadioButton(hwnd, IDC_AWAKE_MODE_CONT, IDC_AWAKE_MODE_SCHEDULE,
+                         IDC_AWAKE_MODE_CONT + (awake_enabled? awake_mode: AWAKE_MODE_CONT));
+        SetDlgItemInt(hwnd, IDC_AWAKE_CD_MIN, awake_cdmin, FALSE);
+        SendDlgItemMessage(hwnd, IDC_AWAKE_RANGELIST, LB_RESETCONTENT, 0, 0);
+        {
+            int i;
+            for (i = 0; i < awake_nranges; i++) {
+                const awake_range_t *r = &awake_ranges[i];
+                int cross = (r->sh*60+r->sm) > (r->eh*60+r->em);
+                TCHAR txt[64];
+                wsprintf(txt, TEXT("%02d:%02d - %02d:%02d %s"),
+                         r->sh, r->sm, r->eh, r->em,
+                         cross? l10n->AwakeCrossSuffix: TEXT(""));
+                SendDlgItemMessage(hwnd, IDC_AWAKE_RANGELIST, LB_ADDSTRING, 0, (LPARAM)txt);
+            }
+        }
+        SetDlgItemInt(hwnd, IDC_AWAKE_SH, 8, FALSE);
+        SetDlgItemInt(hwnd, IDC_AWAKE_SM, 0, FALSE);
+        SetDlgItemInt(hwnd, IDC_AWAKE_EH, 18, FALSE);
+        SetDlgItemInt(hwnd, IDC_AWAKE_EM, 0, FALSE);
+    }
+    // Enable/disable state of the widgets
+    {
+        int enabled = IsChecked(IDC_AWAKE_ENABLED);
+        int schedule = enabled && IsChecked(IDC_AWAKE_MODE_SCHEDULE);
+        int sel = (int)SendDlgItemMessage(hwnd, IDC_AWAKE_RANGELIST, LB_GETCURSEL, 0, 0);
+        EnableDlgItem(hwnd, IDC_AWAKE_MODE_CONT, enabled);
+        EnableDlgItem(hwnd, IDC_AWAKE_MODE_COUNTDOWN, enabled);
+        EnableDlgItem(hwnd, IDC_AWAKE_CD_MIN, enabled && IsChecked(IDC_AWAKE_MODE_COUNTDOWN));
+        EnableDlgItem(hwnd, IDC_AWAKE_SH, schedule);
+        EnableDlgItem(hwnd, IDC_AWAKE_SM, schedule);
+        EnableDlgItem(hwnd, IDC_AWAKE_EH, schedule);
+        EnableDlgItem(hwnd, IDC_AWAKE_EM, schedule);
+        EnableDlgItem(hwnd, IDC_AWAKE_ADDRANGE, schedule);
+        EnableDlgItem(hwnd, IDC_AWAKE_DELRANGE, schedule && sel != LB_ERR);
+        SetDlgItemText(hwnd, IDC_AWAKE_ADDRANGE,
+                       AwakePageEditingIdx >= 0? l10n->AwakeSaveBtn: l10n->AwakeAddBtn);
+    }
+}
+
+static void AwakePageAddOrSave(HWND hwnd)
+{
+    int sh = CLAMP(0, GetDlgItemInt(hwnd, IDC_AWAKE_SH, NULL, FALSE), 23);
+    int sm = CLAMP(0, GetDlgItemInt(hwnd, IDC_AWAKE_SM, NULL, FALSE), 59);
+    int eh = CLAMP(0, GetDlgItemInt(hwnd, IDC_AWAKE_EH, NULL, FALSE), 23);
+    int em = CLAMP(0, GetDlgItemInt(hwnd, IDC_AWAKE_EM, NULL, FALSE), 59);
+    if (sh*60+sm == eh*60+em) {
+        MessageBox(hwnd, l10n->AwakeSameTime, TEXT(APP_NAMEA), MB_OK|MB_ICONWARNING);
+        return;
+    }
+    if (sh*60+sm > eh*60+em) { // range would cross midnight: confirm
+        int ret = MessageBox(hwnd, l10n->AwakeCrossMidnight, TEXT(APP_NAMEA),
+                             MB_YESNO|MB_ICONQUESTION);
+        if (ret != IDYES)
+            return;
+    }
+    if (AwakePageEditingIdx >= 0) {
+        AwakeReplaceRange(AwakePageEditingIdx, sh, sm, eh, em);
+        AwakePageEditingIdx = -1;
+    } else {
+        if (!AwakeAddRange(sh, sm, eh, em))
+            return; // list is full (AWAKE_MAX_RANGES)
+    }
+    AwakePageRefresh(hwnd, 1);
+    PropSheet_Changed(g_cfgwnd, hwnd);
+    AwakePageHaveToApply = 1;
+}
+
+static INT_PTR CALLBACK AwakePageDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_INITDIALOG) {
+        AwakePageEditingIdx = -1;
+        AwakePageHaveToApply = 0;
+        AwakePageRefresh(hwnd, 1);
+    } else if (msg == WM_COMMAND) {
+        int id = LOWORD(wParam);
+        int event = HIWORD(wParam);
+        if (event == BN_CLICKED
+        && (id == IDC_AWAKE_ENABLED || id == IDC_AWAKE_MODE_CONT
+        || id == IDC_AWAKE_MODE_COUNTDOWN || id == IDC_AWAKE_MODE_SCHEDULE)) {
+            AwakePageEditingIdx = -1;
+            AwakePageRefresh(hwnd, 0);
+            PropSheet_Changed(g_cfgwnd, hwnd);
+            AwakePageHaveToApply = 1;
+        } else if (event == BN_CLICKED && id == IDC_AWAKE_ADDRANGE) {
+            AwakePageAddOrSave(hwnd);
+        } else if (event == BN_CLICKED && id == IDC_AWAKE_DELRANGE) {
+            int sel = (int)SendDlgItemMessage(hwnd, IDC_AWAKE_RANGELIST, LB_GETCURSEL, 0, 0);
+            if (sel != LB_ERR && sel < awake_nranges) {
+                AwakeDeleteRange(sel);
+                AwakePageEditingIdx = -1;
+                AwakePageRefresh(hwnd, 1);
+                PropSheet_Changed(g_cfgwnd, hwnd);
+                AwakePageHaveToApply = 1;
+            }
+        } else if (event == LBN_SELCHANGE && id == IDC_AWAKE_RANGELIST) {
+            int sel = (int)SendDlgItemMessage(hwnd, IDC_AWAKE_RANGELIST, LB_GETCURSEL, 0, 0);
+            if (sel != LB_ERR && sel < awake_nranges) {
+                const awake_range_t *r = &awake_ranges[sel];
+                AwakePageEditingIdx = sel;
+                SetDlgItemInt(hwnd, IDC_AWAKE_SH, r->sh, FALSE);
+                SetDlgItemInt(hwnd, IDC_AWAKE_SM, r->sm, FALSE);
+                SetDlgItemInt(hwnd, IDC_AWAKE_EH, r->eh, FALSE);
+                SetDlgItemInt(hwnd, IDC_AWAKE_EM, r->em, FALSE);
+            } else {
+                AwakePageEditingIdx = -1;
+            }
+            AwakePageRefresh(hwnd, 0);
+        }
+    } else if (msg == WM_NOTIFY) {
+        LPNMHDR pnmh = (LPNMHDR) lParam;
+        if (pnmh->code == PSN_SETACTIVE) {
+            // Update text
+            static const dialogstring_t strlst[] = {
+                { IDC_AWAKE_BOX,           L10NIDX(AwakeBox) },
+                { IDC_AWAKE_ENABLED,       L10NIDX(AwakeEnabled) },
+                { IDC_AWAKE_MODE_CONT,     L10NIDX(AwakeModeCont) },
+                { IDC_AWAKE_MODE_COUNTDOWN,L10NIDX(AwakeModeCountdown) },
+                { IDC_AWAKE_MODE_SCHEDULE, L10NIDX(AwakeModeSchedule) },
+                { IDC_AWAKE_RANGES_BOX,    L10NIDX(AwakeRangesBox) },
+                { IDC_AWAKE_HINT,          L10NIDX(AwakeHint) },
+            };
+            UpdateDialogStrings(hwnd, strlst, ARR_SZ(strlst));
+            // Resync if nothing pending (the tray may have toggled meanwhile).
+            if (!AwakePageHaveToApply)
+                AwakePageRefresh(hwnd, 1);
+            else
+                AwakePageRefresh(hwnd, 0);
+        } else if (pnmh->code == PSN_APPLY && AwakePageHaveToApply) {
+            int mode = IsChecked(IDC_AWAKE_MODE_CONT)? AWAKE_MODE_CONT
+                     : IsChecked(IDC_AWAKE_MODE_COUNTDOWN)? AWAKE_MODE_COUNTDOWN
+                     : AWAKE_MODE_SCHEDULE;
+            int cdmin = GetDlgItemInt(hwnd, IDC_AWAKE_CD_MIN, NULL, FALSE);
+            AwakeApplyFromPage(IsChecked(IDC_AWAKE_ENABLED), mode, cdmin);
+            AwakePageHaveToApply = 0;
         }
     }
     return FALSE;

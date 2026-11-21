@@ -45,6 +45,8 @@ struct langinfoitem {
   LNGVALUE(MenuSnapLayout,   TEXT("Snap layout &"), NULL) \
   LNGVALUE(MenuEditLayout,   TEXT("Edi&t snap layout"), NULL) \
   LNGVALUE(MenuCloseAllZones,TEXT("C&lose all test windows"), NULL) \
+  LNGVALUE(AwakeMenuEnable,  TEXT("Kee&p screen awake"), NULL) \
+  LNGVALUE(AwakeMenuDisable, TEXT("Stop kee&ping screen awake"), NULL) \
   LNGVALUE(MenuExit,         TEXT("E&xit"), NULL) \
   /* Config Title and Tabs */ \
   LNGVALUE(ConfigTitle, APP_NAME TEXT(" Configuration"), NULL) \
@@ -53,7 +55,23 @@ struct langinfoitem {
   LNGVALUE(ConfigTabKeyboard,  TEXT("Keyboard"), NULL) \
   LNGVALUE(ConfigTabBlacklist, TEXT("Blacklist"), NULL) \
   LNGVALUE(ConfigTabAdvanced,  TEXT("Advanced"), NULL) \
+  LNGVALUE(ConfigTabAwake,     TEXT("Awake"), NULL) \
   LNGVALUE(ConfigTabAbout,     TEXT("About"), NULL) \
+  /* Awake Box */ \
+  LNGVALUE(AwakeBox,          TEXT("Keep screen awake"), NULL) \
+  LNGVALUE(AwakeEnabled,      TEXT("&Enable keeping the screen awake"), NULL) \
+  LNGVALUE(AwakeModeCont,     TEXT("Keep &awake until disabled"), NULL) \
+  LNGVALUE(AwakeModeCountdown,TEXT("Count&down (minutes):"), NULL) \
+  LNGVALUE(AwakeModeSchedule, TEXT("&Scheduled time ranges"), NULL) \
+  LNGVALUE(AwakeRangesBox,    TEXT("Time &ranges"), NULL) \
+  LNGVALUE(AwakeAddBtn,       TEXT("&Add"), NULL) \
+  LNGVALUE(AwakeSaveBtn,      TEXT("&Save"), NULL) \
+  LNGVALUE(AwakeDelBtn,       TEXT("&Delete"), NULL) \
+  LNGVALUE(AwakeCrossMidnight,TEXT("Start time is later than end time.\nTreat as a range crossing midnight (until next day)?"), NULL) \
+  LNGVALUE(AwakeSameTime,     TEXT("Start and end time cannot be the same!"), NULL) \
+  LNGVALUE(AwakeNoRanges,     TEXT("Please add at least one time range!"), NULL) \
+  LNGVALUE(AwakeCrossSuffix,  TEXT("(crossing midnight)"), NULL) \
+  LNGVALUE(AwakeHint,         TEXT("A start time later than the end time is treated as a range crossing midnight."), NULL) \
   /* General Box */ \
   LNGVALUE(GeneralBox, TEXT("General settings"), NULL) \
   LNGVALUE(GeneralAutoFocus,      TEXT("&Focus windows when dragging.\nYou can also press Ctrl to focus windows."), NULL) \

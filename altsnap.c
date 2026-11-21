@@ -34,6 +34,7 @@ static void UpdateSettings();
 
 // Include stuff
 #include "languages.c"
+#include "awake.c"   // keep-screen-awake: MUST stay before tray.c/config.c, NEVER hooks.c
 #include "tray.c"
 #include "config.c"
 
@@ -325,10 +326,19 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         // Try to add the tray icon because explorer started.
         tray_added = 0;
         UpdateTray();
+    } else if (msg == WM_TIMER && wParam == AWAKE_SCHED_TIMER_ID) {
+        // 10 s schedule polling (resident, guard chain short-circuits it)
+        AwakeScheduleTick();
+    } else if (msg == WM_TIMER && wParam == AWAKE_CD_TIMER_ID) {
+        // 250 ms countdown mode timer
+        AwakeCountdownTick();
     } else if (msg == WM_COMMAND) {
         int wmId = LOWORD(wParam); // int wmEvent = HIWORD(wParam);
         if (wmId == CMD_TOGGLE) {
             ToggleState();
+        } else if (wmId == CMD_AWAKE_TOGGLE) {
+            // Keep-awake switch, orthogonal to the AltSnap pause state.
+            AwakeToggle();
         } else if (wmId == CMD_HIDE) {
             tray_hidden = 1;
             RemoveTray();
@@ -386,6 +396,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         showerror = 0;
         UnhookSystem();
     } else if (msg == WM_DESTROY) {
+        AwakeShutdown(); // defensive: revert the keep-awake execution state
         UnhookSystem();
         RemoveTray();
         PostQuitMessage(0);
@@ -580,6 +591,9 @@ int WINAPI tWinMain(HINSTANCE hInst, HINSTANCE hPrevInstance, TCHAR *params, int
 
     // Hook system
     HookSystem();
+
+    // Keep-screen-awake feature: load [Awake] config and start timers
+    AwakeInit();
 
     // Add tray if hook failed, even though -hide was supplied
     if (tray_hidden && !G_HooksWinPorc) {

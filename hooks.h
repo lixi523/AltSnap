@@ -39,6 +39,7 @@
 #define CMD_SNAPLAYOUTEND (422)
 #define CMD_EDITLAYOUT    (430)
 #define CMD_CLOSEZONES    (431)
+#define CMD_AWAKE_TOGGLE  (432)
 
 
 #ifndef LOW_LEVEL_KB_PROC
