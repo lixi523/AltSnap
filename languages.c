@@ -95,7 +95,9 @@ static void LoadTranslationOrTT(const TCHAR *__restrict__ ini, const TCHAR * __r
     if(!l10n_ini) { l10n_ini = (struct strings *)calloc(1, sizeof(struct strings)); }
     if(!l10n_ini) return; // Unable to allocate mem
 
-    sv_t ini_map[ARR_SZ(l10n_inimapping)];
+    /* Static scratch: the string table grew large enough that a stack copy
+     * pushed this function over the -Wstack-usage budget. Single threaded. */
+    static sv_t ini_map[ARR_SZ(l10n_inimapping)];
     RGIniMapSection(tsection, ini_map, l10n_inimapping, ARR_SZ(l10n_inimapping));
 
     for (size_t i=0; i < ARR_SZ(l10n_inimapping); i++) {

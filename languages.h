@@ -56,6 +56,7 @@ struct langinfoitem {
   LNGVALUE(ConfigTabBlacklist, TEXT("Blacklist"), NULL) \
   LNGVALUE(ConfigTabAdvanced,  TEXT("Advanced"), NULL) \
   LNGVALUE(ConfigTabAwake,     TEXT("Awake"), NULL) \
+  LNGVALUE(ConfigTabCollect,   TEXT("Tray"), NULL) \
   LNGVALUE(ConfigTabAbout,     TEXT("About"), NULL) \
   /* Awake Box */ \
   LNGVALUE(AwakeBox,          TEXT("Keep screen awake"), NULL) \
@@ -72,6 +73,14 @@ struct langinfoitem {
   LNGVALUE(AwakeNoRanges,     TEXT("Please add at least one time range!"), NULL) \
   LNGVALUE(AwakeCrossSuffix,  TEXT("(crossing midnight)"), NULL) \
   LNGVALUE(AwakeHint,         TEXT("A start time later than the end time is treated as a range crossing midnight."), NULL) \
+  /* Tray collect (close to tray) page */ \
+  LNGVALUE(CollectBox,        TEXT("Windows closed to the tray"), NULL) \
+  LNGVALUE(CollectEnabled,    TEXT("&Collect windows of the listed applications to the tray"), NULL) \
+  LNGVALUE(CollectListHeader, TEXT("&Applications (exe name, * wildcard allowed):"), NULL) \
+  LNGVALUE(CollectAddBtn,     TEXT("&Add"), NULL) \
+  LNGVALUE(CollectDelBtn,     TEXT("&Delete"), NULL) \
+  LNGVALUE(CollectHint,       TEXT("Checked = single instance: launching it again brings back the collected window instead of opening a second one.\nWindows of elevated applications cannot be hidden unless AltSnap also runs elevated."), NULL) \
+  LNGVALUE(CollectMenuRestoreAll, TEXT("Restore all windows"), NULL) \
   /* General Box */ \
   LNGVALUE(GeneralBox, TEXT("General settings"), NULL) \
   LNGVALUE(GeneralAutoFocus,      TEXT("&Focus windows when dragging.\nYou can also press Ctrl to focus windows."), NULL) \
@@ -161,7 +170,6 @@ struct langinfoitem {
   LNGVALUE(InputActionStep,     TEXT("Step"), NULL) \
   LNGVALUE(InputActionRoll,     TEXT("&Roll/Unroll window"), NULL) \
   LNGVALUE(InputActionAlwaysOnTop,  TEXT("Toggle always on &top"), NULL) \
-  LNGVALUE(CollectMenuRestoreAll,   TEXT("Restore all windows"), NULL) \
   LNGVALUE(InputActionBorderless,   TEXT("Toggle &borderless"), NULL) \
   LNGVALUE(InputActionCenter,       TEXT("C&enter on desktop"), NULL) \
   LNGVALUE(InputActionCenter2,      TEXT("Center on &physical monitor"), NULL) \

@@ -24,6 +24,7 @@ static INT_PTR CALLBACK BlacklistPageDialogProc(HWND, UINT, WPARAM, LPARAM);
 static INT_PTR CALLBACK AboutPageDialogProc(HWND, UINT, WPARAM, LPARAM);
 static INT_PTR CALLBACK AdvancedPageDialogProc(HWND, UINT, WPARAM, LPARAM);
 static INT_PTR CALLBACK AwakePageDialogProc(HWND, UINT, WPARAM, LPARAM);
+static INT_PTR CALLBACK CollectPageDialogProc(HWND, UINT, WPARAM, LPARAM);
 static LRESULT CALLBACK FindWindowProc(HWND, UINT, WPARAM, LPARAM);
 
 HWND g_cfgwnd = NULL;
@@ -131,6 +132,7 @@ static void OpenConfig(int startpage)
         { IDD_BLACKLISTPAGE, (DLGPROC)BlacklistPageDialogProc},
         { IDD_ADVANCEDPAGE,  (DLGPROC)AdvancedPageDialogProc },
         { IDD_AWAKEPAGE,     (DLGPROC)AwakePageDialogProc },
+        { IDD_COLLECTPAGE,   (DLGPROC)CollectPageDialogProc },
         { IDD_ABOUTPAGE,     (DLGPROC)AboutPageDialogProc    }
     };
     PROPSHEETPAGE psp[ARR_SZ(pages)];
@@ -186,14 +188,15 @@ static void UpdateStrings(void)
     // tc = PropSheet_GetTabControl(g_cfgwnd);
     HWND tc = (HWND)SendMessage(g_cfgwnd, PSM_GETTABCONTROL, 0, 0);
     int numrows_prev = TabCtrl_GetRowCount(tc);
-    const TCHAR *titles[7];
+    const TCHAR *titles[8];
     titles[0] = l10n->ConfigTabGeneral;
     titles[1] = l10n->ConfigTabMouse;
     titles[2] = l10n->ConfigTabKeyboard;
     titles[3] = l10n->ConfigTabBlacklist;
     titles[4] = l10n->ConfigTabAdvanced;
     titles[5] = l10n->ConfigTabAwake;
-    titles[6] = l10n->ConfigTabAbout;
+    titles[6] = l10n->ConfigTabCollect;
+    titles[7] = l10n->ConfigTabAbout;
     for (size_t i = 0; i < ARR_SZ(titles); i++) {
         TCITEM ti;
         ti.mask = TCIF_TEXT;
@@ -1665,6 +1668,39 @@ static INT_PTR CALLBACK KeyboardPageDialogProc(HWND hwnd, UINT msg, WPARAM wPara
 }
 
 /////////////////////////////////////////////////////////////////////////////
+/* Transparent full-screen window used to identify the window under the
+ * mouse. Shared by the blacklist page and the tray collect page. */
+static void ShowFindWindowOverlay(HWND page, int iconid)
+{
+    int left=0, top=0, width, height;
+    WNDCLASS wnd;
+    HWND findhwnd;
+
+    if(GetSystemMetrics(SM_CMONITORS) >= 1) {
+        left   = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        top    = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        width  = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    } else { // NT4...
+        width = GetSystemMetrics(SM_CXFULLSCREEN)+32;
+        height= GetSystemMetrics(SM_CYFULLSCREEN)+256;
+    }
+
+    mem00(&wnd, sizeof(wnd));
+    wnd.lpfnWndProc = FindWindowProc;
+    wnd.hInstance = g_hinst;
+    wnd.hbrBackground = (HBRUSH) (COLOR_WINDOW + 1);
+    wnd.lpszClassName = TEXT(APP_NAMEA)TEXT("-find");
+    wnd.hCursor = LoadCursor(g_hinst, MAKEINTRESOURCE(IDI_FIND));
+    RegisterClass(&wnd);
+
+    findhwnd = CreateWindowEx(WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_TRANSPARENT
+                   , wnd.lpszClassName, NULL, WS_POPUP, 0, 0, 0, 0, NULL, NULL, g_hinst, NULL);
+    ShowWindow(findhwnd, SW_SHOWNA); // And show it
+    MoveWindow(findhwnd, left, top, width, height, FALSE);
+    ShowWindowAsync(GetDlgItem(page, iconid), SW_HIDE);
+}
+
 static INT_PTR CALLBACK BlacklistPageDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static const optlst_t optlst[] = {
@@ -1692,30 +1728,7 @@ static INT_PTR CALLBACK BlacklistPageDialogProc(HWND hwnd, UINT msg, WPARAM wPar
             PropSheet_Changed(g_cfgwnd, hwnd); // Enable the Apply Button
             have_to_apply = 1;
         } else if (event == STN_CLICKED && id == IDC_FINDWINDOW) {
-            // Get size of workspace
-            int left=0, top=0, width, height;
-            if(GetSystemMetrics(SM_CMONITORS) >= 1) {
-                left   = GetSystemMetrics(SM_XVIRTUALSCREEN);
-                top    = GetSystemMetrics(SM_YVIRTUALSCREEN);
-                width  = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-                height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-             } else { // NT4...
-                 width = GetSystemMetrics(SM_CXFULLSCREEN)+32;
-                 height= GetSystemMetrics(SM_CYFULLSCREEN)+256;
-             }
-
-            // Create Transparent window covering the whole workspace
-            WNDCLASS wnd = { 0, FindWindowProc, 0, 0, g_hinst, NULL, NULL
-                           , (HBRUSH) (COLOR_WINDOW + 1), NULL, TEXT(APP_NAMEA)TEXT("-find") };
-            wnd.hCursor = LoadCursor(g_hinst, MAKEINTRESOURCE(IDI_FIND));
-            RegisterClass(&wnd);
-            HWND findhwnd = CreateWindowEx(WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_TRANSPARENT
-                           , wnd.lpszClassName, NULL, WS_POPUP, 0, 0, 0, 0, NULL, NULL, g_hinst, NULL);
-            ShowWindow(findhwnd, SW_SHOWNA); // And show it
-            MoveWindow(findhwnd, left, top, width, height, FALSE);
-
-            // Hide icon
-            ShowWindowAsync(GetDlgItem(hwnd, IDC_FINDWINDOW), SW_HIDE);
+            ShowFindWindowOverlay(hwnd, IDC_FINDWINDOW);
         }
 
     } else if (msg == WM_NOTIFY) {
@@ -1758,10 +1771,14 @@ static LRESULT CALLBACK FindWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
         POINT pt = { GET_X_LPARAM(msgpos), GET_Y_LPARAM(msgpos) };
         RECT fwRc;
         HWND page = PropSheet_GetCurrentPageHwnd(g_cfgwnd);
-        HWND findHwnd = GetDlgItem(page, IDC_FINDWINDOW);
-        GetWindowRect(findHwnd, &fwRc);
-        if (PtInRect(&fwRc, pt))
-            return 0;
+        int iconid;
+        /* Ignore a click that lands on either "identify window" crosshair. */
+        for (iconid = 0; iconid < 2; iconid++) {
+            HWND findHwnd = GetDlgItem(page, iconid? IDC_COLLECT_FIND: IDC_FINDWINDOW);
+            if (!findHwnd || !GetWindowRect(findHwnd, &fwRc)) continue;
+            if (PtInRect(&fwRc, pt))
+                return 0;
+        }
 
        ShowWindow(hwnd, SW_HIDE);
        if (msg == WM_LBUTTONUP) {
@@ -1783,6 +1800,8 @@ static LRESULT CALLBACK FindWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
             if (GetWindowProgName(window, txt_buf, ARR_SZ(txt_buf))) {
                 SetDlgItemText(page, IDC_NEWPROGNAME, txt_buf);
+                if (GetDlgItem(page, IDC_COLLECT_EDIT))
+                    SetDlgItemText(page, IDC_COLLECT_EDIT, txt_buf);
             }
             SetDlgItemText(page, IDC_GWLSTYLE, LPTR2Hex(txt_buf, GetWindowLongPtr(window, GWL_STYLE)));
             SetDlgItemText(page, IDC_GWLEXSTYLE, LPTR2Hex(txt_buf, GetWindowLongPtr(window, GWL_EXSTYLE)));
@@ -1813,8 +1832,9 @@ static LRESULT CALLBACK FindWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
             SbAppendHex(&sb, (ULONG_PTR)GetWindow(window, GW_OWNER) );
             SetDlgItemText(page, IDC_WINHANDLES, sb.it);
         }
-        // Show icon again
-        ShowWindowAsync(findHwnd, SW_SHOW);
+        // Show icon again (whichever page owns one)
+        ShowWindowAsync(GetDlgItem(page, IDC_FINDWINDOW), SW_SHOW);
+        ShowWindowAsync(GetDlgItem(page, IDC_COLLECT_FIND), SW_SHOW);
 
         DestroyWindow(hwnd);
         UnregisterClass(TEXT(APP_NAMEA)TEXT("-find"), g_hinst);
@@ -2497,6 +2517,180 @@ static INT_PTR CALLBACK AwakePageDialogProc(HWND hwnd, UINT msg, WPARAM wParam, 
             int cdmin = GetDlgItemInt(hwnd, IDC_AWAKE_CD_MIN, NULL, FALSE);
             AwakeApplyFromPage(IsChecked(IDC_AWAKE_ENABLED), mode, cdmin);
             AwakePageHaveToApply = 0;
+        }
+    }
+    return FALSE;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Tray collect ("close to tray") page
+static int collect_have_to_apply = 0;
+static int collect_filling = 0;   // guards LVN_ITEMCHANGED while (re)filling
+
+static const optlst_t collect_optlst[] = {
+    { IDC_COLLECT_ENABLED, T_BOL, 0, TEXT("TrayCollect"), "Enabled", (void *)0 },
+};
+
+static void CollectPageAddItem(HWND list, const TCHAR *name, int checked)
+{
+    LVITEM lvi;
+    int i, n, idx;
+
+    if (!name || !*name) return;
+    n = ListView_GetItemCount(list);
+    for (i = 0; i < n; i++) {
+        TCHAR existing[MAX_PATH] = {0};
+        ListView_GetItemText(list, i, 0, existing, ARR_SZ(existing));
+        if (!lstrcmpi(existing, name)) return; // already listed
+    }
+
+    mem00(&lvi, sizeof(lvi));
+    lvi.mask = LVIF_TEXT;
+    lvi.iItem = n;
+    lvi.pszText = (TCHAR *)name;
+    idx = ListView_InsertItem(list, &lvi);
+    if (idx >= 0)
+        ListView_SetItemState(list, idx, INDEXTOSTATEIMAGEMASK(checked? 2: 1), LVIS_STATEIMAGEMASK);
+}
+
+/* "a.exe, b.exe" -> one row each, all checked; then "MultiInstance" unchecks. */
+static void CollectPageFillList(HWND hwnd)
+{
+    HWND list = GetDlgItem(hwnd, IDC_COLLECT_LIST);
+    static TCHAR buf[2048];   /* static: keeps this frame under -Wstack-usage */
+    const TCHAR *p;
+    int pass;
+
+    collect_filling = 1;
+    ListView_DeleteAllItems(list);
+
+    for (pass = 0; pass < 2; pass++) {
+        buf[0] = TEXT('\0');
+        GetPrivateProfileString(TEXT("TrayCollect"),
+                                pass? TEXT("MultiInstance"): TEXT("Processes"),
+                                TEXT(""), buf, ARR_SZ(buf), inipath);
+        p = buf;
+        while (*p) {
+            TCHAR name[MAX_PATH];
+            size_t n = 0;
+            while (*p == TEXT(',') || *p == TEXT(' ')) p++;
+            while (*p && *p != TEXT(',') && n < ARR_SZ(name)-1) name[n++] = *p++;
+            name[n] = TEXT('\0');
+            if (!n) continue;
+            if (pass == 0) {
+                CollectPageAddItem(list, name, 1);
+            } else {
+                int i, cnt = ListView_GetItemCount(list);
+                for (i = 0; i < cnt; i++) {
+                    TCHAR existing[MAX_PATH] = {0};
+                    ListView_GetItemText(list, i, 0, existing, ARR_SZ(existing));
+                    if (!lstrcmpi(existing, name)) {
+                        ListView_SetItemState(list, i, INDEXTOSTATEIMAGEMASK(1), LVIS_STATEIMAGEMASK);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    collect_filling = 0;
+}
+
+static void CollectPageApply(HWND hwnd)
+{
+    HWND list = GetDlgItem(hwnd, IDC_COLLECT_LIST);
+    static TCHAR procs[2048];
+    static TCHAR multi[2048];
+    sb_t sp = { procs, 0, ARR_SZ(procs) };
+    sb_t sm = { multi, 0, ARR_SZ(multi) };
+    int i, n;
+
+    procs[0] = TEXT('\0');
+    multi[0] = TEXT('\0');
+    n = ListView_GetItemCount(list);
+    for (i = 0; i < n; i++) {
+        TCHAR name[MAX_PATH] = {0};
+        ListView_GetItemText(list, i, 0, name, ARR_SZ(name));
+        if (!name[0]) continue;
+        if (sp.len) SbAppendStr(&sp, TEXT(","));
+        SbAppendStr(&sp, name);
+        if (!ListView_GetCheckState(list, i)) {
+            if (sm.len) SbAppendStr(&sm, TEXT(","));
+            SbAppendStr(&sm, name);
+        }
+    }
+    WritePrivateProfileString(TEXT("TrayCollect"), TEXT("Processes"), procs, inipath);
+    WritePrivateProfileString(TEXT("TrayCollect"), TEXT("MultiInstance"), multi, inipath);
+    CollectReloadConfig();
+    UpdateSettings();
+}
+
+static INT_PTR CALLBACK CollectPageDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_INITDIALOG) {
+        HWND list = GetDlgItem(hwnd, IDC_COLLECT_LIST);
+        LVCOLUMN col;
+        ReadDialogOptions(hwnd, collect_optlst, ARR_SZ(collect_optlst));
+        ListView_SetExtendedListViewStyle(list, LVS_EX_CHECKBOXES|LVS_EX_FULLROWSELECT);
+        mem00(&col, sizeof(col));
+        col.mask = LVCF_WIDTH;
+        col.cx = 190;
+        ListView_InsertColumn(list, 0, &col);
+        collect_have_to_apply = 0;
+        CollectPageFillList(hwnd);
+    } else if (msg == WM_COMMAND) {
+        int id = LOWORD(wParam);
+        int event = HIWORD(wParam);
+        if (event == BN_CLICKED && (id == IDC_COLLECT_ADD || id == IDC_COLLECT_DEL)) {
+            HWND list = GetDlgItem(hwnd, IDC_COLLECT_LIST);
+            if (id == IDC_COLLECT_ADD) {
+                TCHAR name[MAX_PATH] = {0};
+                GetDlgItemText(hwnd, IDC_COLLECT_EDIT, name, ARR_SZ(name));
+                if (name[0]) {
+                    CollectPageAddItem(list, name, 1);
+                    SetDlgItemText(hwnd, IDC_COLLECT_EDIT, TEXT(""));
+                }
+            } else {
+                int sel = ListView_GetNextItem(list, -1, LVNI_SELECTED);
+                if (sel >= 0) ListView_DeleteItem(list, sel);
+            }
+            PropSheet_Changed(g_cfgwnd, hwnd);
+            collect_have_to_apply = 1;
+        } else if (event == STN_CLICKED && id == IDC_COLLECT_FIND) {
+            ShowFindWindowOverlay(hwnd, IDC_COLLECT_FIND);
+        } else if (event == BN_CLICKED && id == IDC_COLLECT_ENABLED) {
+            PropSheet_Changed(g_cfgwnd, hwnd);
+            collect_have_to_apply = 1;
+        } else if (event == EN_CHANGE && id == IDC_COLLECT_EDIT) {
+            PropSheet_Changed(g_cfgwnd, hwnd);
+            collect_have_to_apply = 1;
+        }
+    } else if (msg == WM_NOTIFY) {
+        LPNMHDR pnmh = (LPNMHDR) lParam;
+        if (pnmh->code == PSN_SETACTIVE) {
+            static const dialogstring_t strlst[] = {
+                { IDC_COLLECT_BOX,     L10NIDX(CollectBox) },
+                { IDC_COLLECT_ENABLED, L10NIDX(CollectEnabled) },
+                { IDC_COLLECT_LABEL,   L10NIDX(CollectListHeader) },
+                { IDC_COLLECT_ADD,     L10NIDX(CollectAddBtn) },
+                { IDC_COLLECT_DEL,     L10NIDX(CollectDelBtn) },
+                { IDC_COLLECT_HINT,    L10NIDX(CollectHint) },
+            };
+            UpdateDialogStrings(hwnd, strlst, ARR_SZ(strlst));
+            if (!collect_have_to_apply) {
+                ReadDialogOptions(hwnd, collect_optlst, ARR_SZ(collect_optlst));
+                CollectPageFillList(hwnd);
+            }
+        } else if (pnmh->code == PSN_APPLY && collect_have_to_apply) {
+            WriteDialogOptions(hwnd, collect_optlst, ARR_SZ(collect_optlst));
+            CollectPageApply(hwnd);
+            collect_have_to_apply = 0;
+        } else if (pnmh->code == LVN_ITEMCHANGED) {
+            /* A ListView does not send EN_UPDATE, so this is the only place
+             * that can light the Apply button after a checkbox toggle. */
+            if (!collect_filling && (((LPNMLISTVIEW)lParam)->uChanged & LVIF_STATE)) {
+                PropSheet_Changed(g_cfgwnd, hwnd);
+                collect_have_to_apply = 1;
+            }
         }
     }
     return FALSE;

@@ -229,4 +229,16 @@
 #define IDC_AWAKE_RANGELIST             2213
 #define IDC_AWAKE_HINT                  2214
 
+// Tray collect page (close to tray)
+#define IDD_COLLECTPAGE                 209
+#define IDC_COLLECT_BOX                 2300
+#define IDC_COLLECT_ENABLED             2301
+#define IDC_COLLECT_LIST                2302
+#define IDC_COLLECT_ADD                 2303
+#define IDC_COLLECT_FIND                2304
+#define IDC_COLLECT_HINT                2305
+#define IDC_COLLECT_EDIT                2306
+#define IDC_COLLECT_DEL                 2307
+#define IDC_COLLECT_LABEL               2308
+
 #endif // AS_RESOURCE_H

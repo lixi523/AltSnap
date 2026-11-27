@@ -29,6 +29,11 @@ static int  collect_count = 0;
 static UINT collect_nextid = 1;
 static UINT collect_cbmsg = 0;   /* Shell_NotifyIcon callback message */
 
+/* Parsed [TrayCollect] config, kept for the single-instance redirect. */
+static int   collect_enabled = 0;
+static TCHAR collect_processes[2048];
+static TCHAR collect_multi[2048];
+
 /* NOTIFYICONDATA V3-compatible layout (Vista+, includes guidItem).
  * Declared locally so the same source builds for both TCHAR variants
  * without depending on the exact NOTIFYICONDATA definition in the SDK. */
@@ -386,6 +391,13 @@ static void CollectLoadWindows(void)
 
 static void CollectReloadConfig(void)
 {
+    collect_enabled = GetPrivateProfileInt(TEXT("TrayCollect"), TEXT("Enabled"), 0, inipath) ? 1 : 0;
+    collect_processes[0] = TEXT('\0');
+    collect_multi[0] = TEXT('\0');
+    GetPrivateProfileString(TEXT("TrayCollect"), TEXT("Processes"), TEXT(""),
+                           collect_processes, ARR_SZ(collect_processes), inipath);
+    GetPrivateProfileString(TEXT("TrayCollect"), TEXT("MultiInstance"), TEXT(""),
+                           collect_multi, ARR_SZ(collect_multi), inipath);
 }
 
 /* Exit: give everything back, remove every icon, forget the session. */
@@ -414,6 +426,7 @@ static void CollectInit(void)
     collect_destroy_hook =
         SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, NULL, CollectWinEventProc,
                         0, 0, WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
+    CollectReloadConfig();
     CollectLoadWindows();
 }
 

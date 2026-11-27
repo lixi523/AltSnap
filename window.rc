@@ -285,6 +285,24 @@ BEGIN
 END
 
 /////////////////////////////////////////////////////////////////////////////
+// Close to tray (collect)
+IDD_COLLECTPAGE DIALOG DISCARDABLE  0, 0, 220, 190
+STYLE WS_CHILD | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | DS_3DLOOK
+CAPTION "" // TRAY COLLECT
+FONT 8, "MS Shell Dlg 2"
+BEGIN
+    GROUPBOX        "",IDC_COLLECT_BOX, 3,1,212,186
+    AUTOCHECKBOX    "",IDC_COLLECT_ENABLED, 10,10,198,8
+    LTEXT           "",IDC_COLLECT_LABEL, 10,21,200,8
+    CONTROL         "",IDC_COLLECT_LIST,"SysListView32",LVS_REPORT|LVS_SINGLESEL|LVS_SHOWSELALWAYS|WS_TABSTOP|WS_BORDER, 10,31,200,80
+    ICON            IDI_FIND,IDC_COLLECT_FIND, 10,117,16,16, SS_NOTIFY|SS_REALSIZEIMAGE
+    EDITTEXT        IDC_COLLECT_EDIT, 30,119,96,12, ES_AUTOHSCROLL
+    PUSHBUTTON      "",IDC_COLLECT_ADD, 130,118,34,14
+    PUSHBUTTON      "",IDC_COLLECT_DEL, 168,118,34,14
+    LTEXT           "",IDC_COLLECT_HINT, 10,137,200,44
+END
+
+/////////////////////////////////////////////////////////////////////////////
 // Cursor
 IDI_FIND                CURSOR  DISCARDABLE     "media/find.cur"
 
