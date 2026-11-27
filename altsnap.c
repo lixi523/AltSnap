@@ -405,6 +405,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         AwakeShutdown(); // defensive: revert the keep-awake execution state
         UnhookSystem();
         RemoveTray();
+        CollectShutdown();
         PostQuitMessage(0);
     } else if (msg == WM_LBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_RBUTTONDOWN) {
         // Hide cursorwnd if clicked on, this might happen if

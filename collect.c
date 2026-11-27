@@ -55,6 +55,7 @@ typedef struct collect_nid {
 
 static void CollectSaveConfig(void);
 static void CollectReloadConfig(void);
+static void CollectLoadWindows(void);
 
 /* Deterministic GUID per (exe, hwnd): Windows remembers the tray position by
  * guidItem, and two icons sharing a GUID would collapse into one slot. */
@@ -318,12 +319,91 @@ static void CALLBACK CollectWinEventProc(HWINEVENTHOOK hook, DWORD event, HWND h
     if (i >= 0) CollectRemoveIndex(i);
 }
 
+static HWINEVENTHOOK collect_destroy_hook = NULL;
+
+/* Persist the hidden windows so a crash or a restart can never leave windows
+ * the user cannot reach. Format: "hwnd:pid,hwnd:pid". */
 static void CollectSaveConfig(void)
 {
+    TCHAR buf[1024];
+    sb_t sb = { buf, 0, ARR_SZ(buf) };
+    int i;
+
+    buf[0] = TEXT('\0');
+    for (i = 0; i < collect_count; i++) {
+        if (i) SbAppendStr(&sb, TEXT(","));
+        SbAppendUint(&sb, (UINT)(UINT_PTR)collect_items[i].hwnd);
+        SbAppendStr(&sb, TEXT(":"));
+        SbAppendUint(&sb, (UINT)collect_items[i].pid);
+    }
+    WritePrivateProfileString(TEXT("TrayCollect"), TEXT("Windows"), buf, inipath);
+}
+
+static UINT CollectParseUint(const TCHAR **pp)
+{
+    UINT v = 0;
+    const TCHAR *p = *pp;
+    while (*p >= TEXT('0') && *p <= TEXT('9')) {
+        v = v * 10 + (UINT)(*p - TEXT('0'));
+        p++;
+    }
+    *pp = p;
+    return v;
+}
+
+/* Startup: give every still-existing hidden window back to the user.
+ * We deliberately do NOT rebuild the tray icons: if the recovery entry point
+ * is lost once, the window can never be reached again. Safety over fidelity. */
+static void CollectLoadWindows(void)
+{
+    TCHAR buf[1024];
+    const TCHAR *p;
+
+    buf[0] = TEXT('\0');
+    GetPrivateProfileString(TEXT("TrayCollect"), TEXT("Windows"), TEXT(""), buf, ARR_SZ(buf), inipath);
+
+    p = buf;
+    while (*p) {
+        HWND hwnd;
+        UINT h, pid;
+        DWORD pid2 = 0;
+        while (*p == TEXT(',') || *p == TEXT(' ')) p++;
+        if (!*p) break;
+        h = CollectParseUint(&p);
+        if (*p != TEXT(':')) break;
+        p++;
+        pid = CollectParseUint(&p);
+        hwnd = (HWND)(UINT_PTR)h;
+        if (hwnd && IsWindow(hwnd)
+        && GetWindowThreadProcessId(hwnd, &pid2) && pid2 == pid
+        && !IsWindowVisible(hwnd)) {
+            ShowWindow(hwnd, SW_SHOW);
+        }
+        while (*p && *p != TEXT(',')) p++;
+    }
+    WritePrivateProfileString(TEXT("TrayCollect"), TEXT("Windows"), TEXT(""), inipath);
 }
 
 static void CollectReloadConfig(void)
 {
+}
+
+/* Exit: give everything back, remove every icon, forget the session. */
+static void CollectShutdown(void)
+{
+    while (collect_count > 0) {
+        HWND hwnd;
+        collect_count--;
+        hwnd = collect_items[collect_count].hwnd;
+        CollectDropIcon(collect_count);
+        if (IsWindow(hwnd))
+            ShowWindow(hwnd, SW_SHOW);
+    }
+    if (collect_destroy_hook) {
+        UnhookWinEvent(collect_destroy_hook);
+        collect_destroy_hook = NULL;
+    }
+    WritePrivateProfileString(TEXT("TrayCollect"), TEXT("Windows"), TEXT(""), inipath);
 }
 
 static void CollectInit(void)
@@ -331,8 +411,10 @@ static void CollectInit(void)
     collect_cbmsg = RegisterWindowMessage(TEXT("AltSnap-TrayCollect"));
     collect_count = 0;
     collect_nextid = 1;
-    SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, NULL, CollectWinEventProc,
-                    0, 0, WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
+    collect_destroy_hook =
+        SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, NULL, CollectWinEventProc,
+                        0, 0, WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
+    CollectLoadWindows();
 }
 
 #endif /* COLLECT_C_9F31 */
