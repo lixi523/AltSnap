@@ -76,7 +76,7 @@ struct langinfoitem {
   /* Tray collect (close to tray) page */ \
   LNGVALUE(CollectBox,        TEXT("Windows closed to the tray"), NULL) \
   LNGVALUE(CollectEnabled,    TEXT("&Collect windows of the listed applications to the tray"), NULL) \
-  LNGVALUE(CollectListHeader, TEXT("&Applications (exe name, * wildcard allowed):"), NULL) \
+  LNGVALUE(CollectListHeader, TEXT("&Applications (exe name):"), NULL) \
   LNGVALUE(CollectAddBtn,     TEXT("&Add"), NULL) \
   LNGVALUE(CollectDelBtn,     TEXT("&Delete"), NULL) \
   LNGVALUE(CollectHint,       TEXT("Checked = single instance: launching it again brings back the collected window instead of opening a second one.\nWindows of elevated applications cannot be hidden unless AltSnap also runs elevated."), NULL) \

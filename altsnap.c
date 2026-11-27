@@ -332,6 +332,8 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         tray_added = 0;
         UpdateTray();
         CollectReAddAll();
+    } else if (msg == WM_TIMER && wParam == COLLECT_REDIR_TIMER) {
+        CollectClosePending();
     } else if (msg == WM_TIMER && wParam == AWAKE_SCHED_TIMER_ID) {
         // 10 s schedule polling (resident, guard chain short-circuits it)
         AwakeScheduleTick();

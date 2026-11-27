@@ -16,12 +16,14 @@
 #define COLLECT_C_9F31
 
 #define COLLECT_MAX 32
+#define COLLECT_REDIR_TIMER 0xC011   /* delayed close of a redirected instance */
 
 typedef struct collect_item {
     HWND  hwnd;
     DWORD pid;
     UINT  id;
     GUID  guid;
+    TCHAR exe[MAX_PATH];
 } collect_item_t;
 
 static collect_item_t collect_items[COLLECT_MAX];
@@ -33,6 +35,9 @@ static UINT collect_cbmsg = 0;   /* Shell_NotifyIcon callback message */
 static int   collect_enabled = 0;
 static TCHAR collect_processes[2048];
 static TCHAR collect_multi[2048];
+
+/* Windows whose new instance must be closed after the collected one is back. */
+static HWND collect_pending_close[4];
 
 /* NOTIFYICONDATA V3-compatible layout (Vista+, includes guidItem).
  * Declared locally so the same source builds for both TCHAR variants
@@ -186,6 +191,7 @@ static void CollectWindow(HWND hwnd)
     collect_items[collect_count].hwnd = hwnd;
     collect_items[collect_count].pid = pid;
     collect_items[collect_count].id = collect_nextid++;
+    lstrcpyn(collect_items[collect_count].exe, exe, ARR_SZ(collect_items[collect_count].exe));
     collect_items[collect_count].guid = CollectGuid(exe, hwnd);
 
     CollectFillIdentity(&nid, collect_count);
@@ -207,6 +213,90 @@ static void CollectWindow(HWND hwnd)
     }
     collect_count++;
     CollectSaveConfig();
+}
+
+/* --- single instance redirect ---------------------------------------- */
+
+/* Comma separated exe list, same matching rule as [Blacklist] Processes:
+ * exact case insensitive exe name; a lone "*" is not usable here because we
+ * only ever have one name to compare. */
+static int collect_app_matches(const TCHAR *listbuf, const TCHAR *exe)
+{
+    const TCHAR *p = listbuf;
+    if (!exe || !*exe || !p) return 0;
+    while (*p) {
+        TCHAR name[MAX_PATH];
+        size_t n = 0;
+        while (*p == TEXT(',') || *p == TEXT(' ')) p++;
+        while (*p && *p != TEXT(',') && n < ARR_SZ(name)-1) name[n++] = *p++;
+        name[n] = TEXT('\0');
+        if (n && !lstrcmpi(exe, name)) return 1;
+    }
+    return 0;
+}
+
+/* A window that looks like a real, freshly shown application window. */
+static int is_fresh_app_window(HWND hwnd)
+{
+    LONG_PTR style, ex;
+    DWORD cloaked = 0;
+
+    if (!hwnd || hwnd == g_hwnd) return 0;
+    if (GetAncestor(hwnd, GA_ROOT) != hwnd) return 0;
+    if (!IsWindowVisible(hwnd)) return 0;
+    if (GetWindow(hwnd, GW_OWNER)) return 0;
+    ex = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+    if (ex & WS_EX_TOOLWINDOW) return 0;
+    style = GetWindowLongPtr(hwnd, GWL_STYLE);
+    if (!(style & WS_CAPTION)) return 0;
+    if (OredredWinVer() >= 0x06020000
+    &&  SUCCEEDED(DwmGetWindowAttributeL(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked)))
+    &&  cloaked) return 0;
+    /* GetWindowTextLength uses the cached title for other processes: no
+     * cross-process message, so it is safe on the WinEvent thread. */
+    if (GetWindowTextLength(hwnd) <= 0) return 0;
+    return 1;
+}
+
+static void CollectClosePending(void)
+{
+    size_t i;
+    KillTimer(g_hwnd, COLLECT_REDIR_TIMER);
+    for (i = 0; i < ARR_SZ(collect_pending_close); i++) {
+        HWND hwnd = collect_pending_close[i];
+        collect_pending_close[i] = NULL;
+        if (hwnd && IsWindow(hwnd)) PostMessage(hwnd, WM_CLOSE, 0, 0);
+    }
+}
+
+/* "Single instance" for the listed applications: launching the app again
+ * gives back the collected window instead of a second one. */
+static void CollectRedirectMaybe(HWND hwnd)
+{
+    TCHAR exe[MAX_PATH] = {0};
+    int i;
+    size_t k;
+
+    if (!collect_enabled || !collect_processes[0]) return;
+    if (!is_fresh_app_window(hwnd)) return;
+    if (!GetWindowProgName(hwnd, exe, ARR_SZ(exe))) return;
+    if (!collect_app_matches(collect_processes, exe)) return;
+    if (collect_app_matches(collect_multi, exe)) return;  /* user allowed multi */
+
+    for (i = 0; i < collect_count; i++) {
+        if (!lstrcmpi(collect_items[i].exe, exe)) break;
+    }
+    if (i >= collect_count) return;   /* this application is not in the tray */
+
+    CollectRestoreIndex(i);
+
+    for (k = 0; k < ARR_SZ(collect_pending_close); k++) {
+        if (!collect_pending_close[k]) break;
+    }
+    if (k >= ARR_SZ(collect_pending_close)) k = 0;   /* overwrite the oldest */
+    collect_pending_close[k] = hwnd;
+    /* A new window is often not ready at CREATE time: close it a bit later. */
+    SetTimer(g_hwnd, COLLECT_REDIR_TIMER, 400, NULL);
 }
 
 static void CollectToggleTopmost(HWND hwnd)
@@ -319,9 +409,12 @@ static void CALLBACK CollectWinEventProc(HWINEVENTHOOK hook, DWORD event, HWND h
 {
     int i;
     if (!hwnd || idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
-    if (event != EVENT_OBJECT_DESTROY) return;
-    i = CollectFindIndex(hwnd);
-    if (i >= 0) CollectRemoveIndex(i);
+    if (event == EVENT_OBJECT_DESTROY) {
+        i = CollectFindIndex(hwnd);
+        if (i >= 0) CollectRemoveIndex(i);
+    } else if (event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_SHOW) {
+        CollectRedirectMaybe(hwnd);
+    }
 }
 
 static HWINEVENTHOOK collect_destroy_hook = NULL;
@@ -424,7 +517,7 @@ static void CollectInit(void)
     collect_count = 0;
     collect_nextid = 1;
     collect_destroy_hook =
-        SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, NULL, CollectWinEventProc,
+        SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, NULL, CollectWinEventProc,
                         0, 0, WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
     CollectReloadConfig();
     CollectLoadWindows();
