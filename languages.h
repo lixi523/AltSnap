@@ -161,6 +161,7 @@ struct langinfoitem {
   LNGVALUE(InputActionStep,     TEXT("Step"), NULL) \
   LNGVALUE(InputActionRoll,     TEXT("&Roll/Unroll window"), NULL) \
   LNGVALUE(InputActionAlwaysOnTop,  TEXT("Toggle always on &top"), NULL) \
+  LNGVALUE(CollectMenuRestoreAll,   TEXT("Restore all windows"), NULL) \
   LNGVALUE(InputActionBorderless,   TEXT("Toggle &borderless"), NULL) \
   LNGVALUE(InputActionCenter,       TEXT("C&enter on desktop"), NULL) \
   LNGVALUE(InputActionCenter2,      TEXT("Center on &physical monitor"), NULL) \

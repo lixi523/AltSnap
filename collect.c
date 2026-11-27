@@ -203,6 +203,85 @@ static void CollectWindow(HWND hwnd)
     CollectSaveConfig();
 }
 
+static void CollectToggleTopmost(HWND hwnd)
+{
+    LONG_PTR ex;
+    if (!IsWindow(hwnd)) return;
+    ex = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+    SetWindowPos(hwnd, (ex & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST,
+                 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
+}
+
+static void CollectCloseIndex(int i)
+{
+    HWND hwnd;
+    if (i < 0 || i >= collect_count) return;
+    hwnd = collect_items[i].hwnd;
+    CollectRemoveIndex(i);
+    if (IsWindow(hwnd)) PostMessage(hwnd, WM_CLOSE, 0, 0);
+}
+
+static void CollectRestoreAll(void)
+{
+    while (collect_count > 0)
+        CollectRestoreIndex(collect_count - 1);
+}
+
+/* explorer.exe restarted: every Shell_NotifyIcon registration is gone. */
+static void CollectReAddAll(void)
+{
+    int i;
+    for (i = 0; i < collect_count; i++) {
+        collect_nid_t nid;
+        TCHAR tip[128];
+        CollectFillIdentity(&nid, i);
+        nid.uFlags |= NIF_MESSAGE|NIF_ICON|NIF_TIP;
+        nid.hIcon = GetWindowIcon(collect_items[i].hwnd);
+        CollectWindowText(collect_items[i].hwnd, tip, ARR_SZ(tip));
+        if (!tip[0]) lstrcpyn(tip, TEXT(APP_NAMEA), ARR_SZ(tip));
+        lstrcpyn(nid.szTip, tip, ARR_SZ(nid.szTip));
+        Shell_NotifyIcon(NIM_ADD, (PNOTIFYICONDATA)&nid);
+    }
+}
+
+/* Per-icon menu. TrackPopupMenu runs its own modal loop inside WindowProc,
+ * which is the normal way to show a tray menu. */
+static void CollectShowMenu(int i, POINT pt)
+{
+    HMENU menu = CreatePopupMenu();
+    UINT topmost_flag = MF_STRING;
+    int cmd;
+
+    if (!menu) return;
+    if (IsWindow(collect_items[i].hwnd)
+    && (GetWindowLongPtr(collect_items[i].hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST))
+        topmost_flag |= MF_CHECKED;
+
+    AppendMenu(menu, MF_STRING, 100 + i, l10n->InputActionRestore);
+    AppendMenu(menu, topmost_flag, 300 + i, l10n->InputActionAlwaysOnTop);
+    AppendMenu(menu, MF_STRING, 400 + i, l10n->InputActionClose);
+    AppendMenu(menu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(menu, MF_STRING, 200, l10n->CollectMenuRestoreAll);
+
+    /* The classic two calls that make a tray menu dismiss itself. */
+    SetForegroundWindow(g_hwnd);
+    PostMessage(g_hwnd, WM_NULL, 0, 0);
+
+    cmd = (int)TrackPopupMenu(menu, TPM_RETURNCMD|TPM_RIGHTBUTTON,
+                              pt.x, pt.y, 0, g_hwnd, NULL);
+    DestroyMenu(menu);
+
+    if (cmd >= 400) {
+        CollectCloseIndex(cmd - 400);
+    } else if (cmd >= 300) {
+        if (cmd - 300 < collect_count) CollectToggleTopmost(collect_items[cmd-300].hwnd);
+    } else if (cmd >= 200) {
+        CollectRestoreAll();
+    } else if (cmd >= 100) {
+        CollectRestoreIndex(cmd - 100);
+    }
+}
+
 static void CollectIconMessage(WPARAM wParam, LPARAM lParam)
 {
     UINT id = (UINT)wParam;
@@ -214,9 +293,29 @@ static void CollectIconMessage(WPARAM wParam, LPARAM lParam)
         case WM_LBUTTONDBLCLK:
             CollectRestoreIndex(i);
             break;
+        case WM_RBUTTONUP:
+        {
+            POINT pt;
+            GetCursorPos(&pt);
+            CollectShowMenu(i, pt);
+            break;
+        }
         }
         return;
     }
+}
+
+/* WINEVENT_OUTOFCONTEXT delivers this callback on the installing thread (the
+ * main thread), so touching the table directly is safe. */
+static void CALLBACK CollectWinEventProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
+                                         LONG idObject, LONG idChild,
+                                         DWORD idEventThread, DWORD dwmsEventTime)
+{
+    int i;
+    if (!hwnd || idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
+    if (event != EVENT_OBJECT_DESTROY) return;
+    i = CollectFindIndex(hwnd);
+    if (i >= 0) CollectRemoveIndex(i);
 }
 
 static void CollectSaveConfig(void)
@@ -232,6 +331,8 @@ static void CollectInit(void)
     collect_cbmsg = RegisterWindowMessage(TEXT("AltSnap-TrayCollect"));
     collect_count = 0;
     collect_nextid = 1;
+    SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, NULL, CollectWinEventProc,
+                    0, 0, WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
 }
 
 #endif /* COLLECT_C_9F31 */
