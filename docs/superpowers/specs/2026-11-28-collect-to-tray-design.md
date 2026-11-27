@@ -17,7 +17,7 @@
 
 ## 2. 目标
 
-- **G1** 设置里新增一页，可增删"要收纳的应用"（exe 名，支持 `*.exe` 这类通配符）。
+- **G1** 设置里新增一页，可增删“要收纳的应用”（exe 文件名，精确匹配、大小写不敏感；整项写成 `*` 表示所有应用）。
 - **G2** 列表内应用的窗口，点关闭按钮或按 Alt+F4 时被隐藏，托盘出现一个**可被系统单独排列**的图标。
 - **G3** 单击图标还原对应窗口；右键图标有「还原 / 置顶 / 关闭 / 全部还原」。
 - **G4** AltSnap 退出、崩溃或系统重启后，不留下用户无法还原的"隐形窗口"。
@@ -75,7 +75,7 @@ MultiInstance=notepad.exe
 Windows=
 ```
 
-- `Processes` 的匹配语义**直接继承** `[Blacklist] Processes`：逗号分隔、逗号后空格跳过、支持 `*` 通配、支持 `exe:title|class` 复合格式。hooks.dll 侧复用 `hooks.c` 的 `readblacklist()`；主程序侧用 `nanolibc.h` 里同一套 `lstrcmp_star()` 做 exe 名匹配（`unfuck.h` 已引入 `nanolibc.h`，两个二进制里都可用）。
+- `Processes` 的匹配语义**直接继承** `[Blacklist] Processes`：逗号分隔、逗号后空格跳过。注意：`blacklist_t` 里 **exe 名是精确（大小写不敏感）比较，不支持 `*.exe` 通配**（通配只对 title/class 生效）；单独一项 `*` 会被解成“任意 exe”，两侧行为已对齐。hooks.dll 侧复用 `hooks.c` 的 `readblacklist()`；主程序侧用 `collect_app_matches()` 按同一规则匹配。
 - `MultiInstance` 存的是**例外项**而不是"勾选集合"：新加入 `Processes` 的应用自动就是"唯一实例"，不需要在两个列表间做同步；从 `Processes` 删掉的应用会在 `MultiInstance` 里留一条废条目，无害且与其他列表键行为一致。
 - `Enabled=0` 时整条链路短路，零开销。
 

@@ -230,6 +230,7 @@ static int collect_app_matches(const TCHAR *listbuf, const TCHAR *exe)
         while (*p == TEXT(',') || *p == TEXT(' ')) p++;
         while (*p && *p != TEXT(',') && n < ARR_SZ(name)-1) name[n++] = *p++;
         name[n] = TEXT('\0');
+        if (n == 1 && name[0] == TEXT('*')) return 1;  /* "*" = every application */
         if (n && !lstrcmpi(exe, name)) return 1;
     }
     return 0;
