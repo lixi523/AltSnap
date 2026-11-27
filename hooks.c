@@ -2762,10 +2762,12 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
     if (vkey == VK_SCROLL) PostMessage(g_mainhwnd, WM_UPDATETRAY, 0, 0);
     if (ScrollLockState()) return CallNextHookEx(NULL, nCode, wParam, lParam);
 
-    /* Alt+F4 on a "collect to tray" application: swallow, collect. */
+    /* Alt+F4 on a "collect to tray" application: swallow, collect.
+     * LLKHF_ALTDOWN is the per-event truth; GetKeyState() is only a fallback. */
     if (CollectList.length
     && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN || wParam == WM_SYSKEYUP)
-    && vkey == VK_F4 && (GetKeyState(VK_MENU) & 0x8000)) {
+    && vkey == VK_F4
+    && ((kbh->flags & LLKHF_ALTDOWN) || (GetKeyState(VK_MENU) & 0x8000))) {
         TCHAR collect_exe[MAX_PATH] = {0};
         HWND collect_hwnd = GetAncestor(GetForegroundWindow(), GA_ROOT);
         if (collect_hwnd
@@ -5480,8 +5482,13 @@ static int collect_close_click(POINT pt, int is_up)
         if (GetWindowProgName(root, exe, ARR_SZ(exe)))
             cached_hit = blacklisted_from_names(&CollectList, exe, NULL, NULL);
     }
-    if (!cached_hit) return 0;
-    if (HitTestTimeoutL(hwnd, MAKELPARAM(pt.x, pt.y)) != HTCLOSE) return 0;
+    if (!cached_hit) { pending_hwnd = NULL; return 0; }
+    if (HitTestTimeoutL(hwnd, MAKELPARAM(pt.x, pt.y)) != HTCLOSE) {
+        /* Any other button in the caption invalidates a pending close click,
+         * otherwise a later mouse up on the same window would be swallowed. */
+        pending_hwnd = NULL;
+        return 0;
+    }
 
     if (is_up) {
         /* Swallow the up too, otherwise the default button handling still
