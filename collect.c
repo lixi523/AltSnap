@@ -279,6 +279,7 @@ static void CollectRedirectMaybe(HWND hwnd)
     size_t k;
 
     if (!collect_enabled || !collect_processes[0]) return;
+    if (collect_count == 0) return;   /* nothing in the tray: nothing to bring back */
     if (!is_fresh_app_window(hwnd)) return;
     if (!GetWindowProgName(hwnd, exe, ARR_SZ(exe))) return;
     if (!collect_app_matches(collect_processes, exe)) return;
