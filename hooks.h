@@ -98,6 +98,8 @@
 #define WM_GETBESTLAYOUT  (WM_USER+18)
 //#define WM_GETZONESLEN    (WM_USER+19)
 #define WM_GETZONES       (WM_USER+20)
+#define WM_TRAYCOLLECT    (WM_USER+21)   /* hooks.dll -> main: please collect this hwnd */
+#define WM_TRAYCOLLECTMSG (WM_USER+22)   /* Shell_NotifyIcon callback */
 
 // List of possible actions
 // ACVALUE(AC_ENUM, IniString, Info)

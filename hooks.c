@@ -424,6 +424,8 @@ static const char *BlackListStrings[] = {
     "NCHittest",
     "Bottommost"
 };
+// Applications whose windows are collected to the tray on close (close => hide)
+static blacklist_t CollectList;
 // Cursor data
 static HWND g_mainhwnd = NULL;
 
@@ -2759,6 +2761,21 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 //    }
     if (vkey == VK_SCROLL) PostMessage(g_mainhwnd, WM_UPDATETRAY, 0, 0);
     if (ScrollLockState()) return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+    /* Alt+F4 on a "collect to tray" application: swallow, collect. */
+    if (CollectList.length
+    && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN || wParam == WM_SYSKEYUP)
+    && vkey == VK_F4 && (GetKeyState(VK_MENU) & 0x8000)) {
+        TCHAR collect_exe[MAX_PATH] = {0};
+        HWND collect_hwnd = GetAncestor(GetForegroundWindow(), GA_ROOT);
+        if (collect_hwnd
+        && GetWindowProgName(collect_hwnd, collect_exe, ARR_SZ(collect_exe))
+        && blacklisted_from_names(&CollectList, collect_exe, NULL, NULL)) {
+            if (wParam != WM_SYSKEYUP)
+                PostMessage(g_mainhwnd, WM_TRAYCOLLECT, (WPARAM)collect_hwnd, 0);
+            return 1;
+        }
+    }
 
     if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
         if (!state.alt && !state.action.ac
@@ -5434,6 +5451,50 @@ static xpure enum buttonstate GetButtonState(WPARAM wp)
 #define CallNextHookEx(NULL, nCode, wParam, lParam) 0
 #endif // NO_HOOK_LL
 //
+/* Close button hit on a collected application? Swallow the click and let the
+ * main program hide the window.
+ *
+ * HOT PATH RULE: never call GetWindowText / HitTestTimeoutbl / blacklisted()
+ * here. They send synchronous cross-process messages without a timeout, and
+ * a low level hook blocked on a hung thread freezes all input. Only
+ * GetWindowProgName() (OpenProcess) and HitTestTimeoutL() (SendMessageTimeout)
+ * are allowed.
+ *
+ * Returns 1 when the event must be swallowed. */
+static int collect_close_click(POINT pt, int is_up)
+{
+    static HWND cached_hwnd;
+    static int  cached_hit;
+    static HWND pending_hwnd;
+    HWND hwnd, root;
+
+    hwnd = WindowFromPoint(pt);
+    if (!hwnd) return 0;
+    root = GetAncestor(hwnd, GA_ROOT);
+    if (!root || root == g_mainhwnd) return 0;
+
+    if (root != cached_hwnd) {
+        TCHAR exe[MAX_PATH] = {0};
+        cached_hwnd = root;
+        cached_hit = 0;
+        if (GetWindowProgName(root, exe, ARR_SZ(exe)))
+            cached_hit = blacklisted_from_names(&CollectList, exe, NULL, NULL);
+    }
+    if (!cached_hit) return 0;
+    if (HitTestTimeoutL(hwnd, MAKELPARAM(pt.x, pt.y)) != HTCLOSE) return 0;
+
+    if (is_up) {
+        /* Swallow the up too, otherwise the default button handling still
+         * sends WM_SYSCOMMAND/SC_CLOSE. */
+        if (root != pending_hwnd) return 0;
+        pending_hwnd = NULL;
+        return 1;
+    }
+    pending_hwnd = root;
+    PostMessage(g_mainhwnd, WM_TRAYCOLLECT, (WPARAM)root, 0);
+    return 1;
+}
+
 LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
 //    if (state.ignoreclick) LOGA("IgnoreClick")
@@ -5492,6 +5553,12 @@ LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
     //Get Button state and data.
     enum buttonstate buttonstate = GetButtonState(wParam);
     enum button button = (enum button)GetButton(wParam, lParam);
+
+    /* Close button on a "collect to tray" application: swallow, collect. */
+    if (CollectList.length && (wParam == WM_LBUTTONDOWN || wParam == WM_LBUTTONUP)) {
+        if (collect_close_click(pt, wParam == WM_LBUTTONUP))
+            return 1;
+    }
     // Get wheel delta
     state.delta = GET_WHEEL_DELTA_WPARAM(msg->mouseData);
 
@@ -6425,6 +6492,20 @@ void readallblacklists(const TCHAR *inipath)
     }
     free(section);
 }
+// Read the "close to tray" application list ([TrayCollect] Processes)
+static void readcollectlist(const TCHAR *inipath)
+{
+    enum { collect_section_length = 32767 };
+    TCHAR *section;
+
+    mem00(&CollectList, sizeof(CollectList));
+    section = (TCHAR *)malloc(collect_section_length*sizeof(TCHAR));
+    if (!section) return;
+    GetPrivateProfileSection(TEXT("TrayCollect"), section, collect_section_length, inipath);
+    if (GetPrivateProfileInt(TEXT("TrayCollect"), TEXT("Enabled"), 0, inipath))
+        readblacklist(section, &CollectList, "Processes");
+    free(section);
+}
 
 ///////////////////////////////////////////////////////////////////////////
 // Used to read Hotkeys and Hotclicks
@@ -6785,6 +6866,7 @@ __declspec(dllexport) WNDPROC WINAPI Load(HWND mainhwnd, const TCHAR *inipath)
 
     // Read all the BLACKLITSTS
     readallblacklists(inipath);
+    readcollectlist(inipath);
 
     ResetDB(); // Zero database of restore info (snap.c)
 

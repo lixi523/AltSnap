@@ -36,6 +36,7 @@ static void UpdateSettings();
 #include "languages.c"
 #include "awake.c"   // keep-screen-awake: MUST stay before tray.c/config.c, NEVER hooks.c
 #include "tray.c"
+#include "collect.c"
 #include "config.c"
 
 static HINSTANCE LoadHooksDLL(void)
@@ -292,6 +293,10 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         return 1;
     } else if (wParam && (msg == WM_PAINT || msg == WM_NCPAINT)) {
         return 0;
+    } else if (msg == WM_TRAYCOLLECT) {
+        CollectWindow((HWND)wParam);
+    } else if (msg == WM_TRAYCOLLECTMSG) {
+        CollectIconMessage(wParam, lParam);
     } else if (msg == WM_TRAY) {
         if (lParam == WM_LBUTTONDOWN || lParam == WM_LBUTTONDBLCLK) {
             ToggleState();
@@ -588,6 +593,7 @@ int WINAPI tWinMain(HINSTANCE hInst, HINSTANCE hPrevInstance, TCHAR *params, int
 
     InitTray();
     UpdateTray();
+    CollectInit();
 
     // Hook system
     HookSystem();

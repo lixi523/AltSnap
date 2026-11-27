@@ -16,12 +16,13 @@
   ```powershell
   $env:PATH = "D:\Documents\Code\AltSnap\tools\w64devkit\bin;$env:PATH"
   cd D:\Documents\Code\AltSnap
-  make -j2
+  Remove-Item hooks.dll,hooksr.o -ErrorAction SilentlyContinue   # 只在切换架构后第一次需要
+  make -fMakefileX64 -j2
   ```
-  期望：无 `error`，且**不新增任何 warning**。基线（改动前）已验证为 0 warning，所以任何新 warning 都算本任务失败。
-- 不要用 `mk.bat`（它会 `taskkill AltSnap.exe` 再 `start AltSnap.exe`，干扰手工验证）。
-- 构建产物是**被跟踪的文件**（`AltSnap.exe`、`hooks.dll`、`altsnapr.o`、`hooksr.o`）。每次提交前执行
-  `git checkout -- AltSnap.exe hooks.dll altsnapr.o hooksr.o`，只提交源码。
+  期望：`exit=0`，且**不新增任何 warning**。基线里已知的两条 warning（`nanolibc.h:367 -Wchar-subscripts`、`hooks.c` `Unload()` 里的 `-Wpointer-to-int-cast`）是既有问题，不属于本任务。
+- **用 `MakefileX64`，不要用 `make -j2`**：工作区里既有的 `altsnapr.o` 是 x86-64 COFF，与 32 位 `Makefile` 链接会报 `incompatible with i386 output`。切换架构后必须先删 `hooks.dll`/`hooksr.o` 再编，否则 make 会复用旧的 32 位 `hooks.dll`，导致 64 位主程序加载失败。
+- 不要用 `mk.bat` / `mk64.bat`（它们会 `taskkill AltSnap.exe` 再 `start AltSnap.exe`，干扰手工验证）。
+- 构建产物（`AltSnap.exe`、`hooks.dll`、`altsnapr.o`、`hooksr.o`）**已被 .gitignore 忽略**，不需要也不应该 `git checkout` 它们；提交只涉及源码。
 - 字符串一律 `TCHAR` / `lstr*` / `wsprintf` / `SbAppendStr`，不引入 CRT（`-nostdlib`）。不要用 `snprintf`、`strcpy`、`wchar_t` 字面量。
 - ini 段名与键名固定：`[TrayCollect]`，键 `Enabled` / `Processes` / `MultiInstance` / `Windows`。逗号分隔，逗号后空格跳过（与 `[Blacklist] Processes` 同一套语义）。
 - 消息号固定：`WM_TRAYCOLLECT = WM_USER+21`（hooks.dll → 主程序），`WM_TRAYCOLLECTMSG = WM_USER+22`（`Shell_NotifyIcon` 回调）。
@@ -270,7 +271,6 @@ Processes=notepad.exe
 - [ ] **Step 6: 提交**
 
 ```bash
-git checkout -- AltSnap.exe hooks.dll altsnapr.o hooksr.o
 git add collect.c hooks.c hooks.h altsnap.c Makefile MakefileARM64Docker MakefileClang MakefileClangdb Makefiledb MakefileGCC3 MakefileTCC MakefileX64 MakefileX64db
 git commit -m "feat: 关闭按钮/Alt+F4 收入托盘（单图标 + 单击还原）"
 ```
@@ -327,7 +327,6 @@ SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, NULL, CollectWinEven
 - [ ] **Step 5: 提交**
 
 ```bash
-git checkout -- AltSnap.exe hooks.dll altsnapr.o hooksr.o
 git add collect.c altsnap.c
 git commit -m "feat: 收纳图标的右键菜单、销毁清理与 explorer 重启重建"
 ```
@@ -373,7 +372,6 @@ git commit -m "feat: 收纳图标的右键菜单、销毁清理与 explorer 重�
 - [ ] **Step 5: 提交**
 
 ```bash
-git checkout -- AltSnap.exe hooks.dll altsnapr.o hooksr.o
 git add collect.c altsnap.c
 git commit -m "feat: 收纳状态的持久化与启动/退出还原"
 ```
@@ -470,7 +468,6 @@ END
 - [ ] **Step 7: 提交**
 
 ```bash
-git checkout -- AltSnap.exe hooks.dll altsnapr.o hooksr.o
 git add resource.h window.rc config.c collect.c
 git commit -m "feat: 设置页新增托盘收纳页（应用列表 + 唯一实例勾选）"
 ```
@@ -541,7 +538,6 @@ MultiInstance=
 - [ ] **Step 5: 提交**
 
 ```bash
-git checkout -- AltSnap.exe hooks.dll altsnapr.o hooksr.o
 git add collect.c altsnap.c
 git commit -m "feat: 唯一实例——再次启动时回到已收纳窗口"
 ```
@@ -613,7 +609,6 @@ MultiInstance=
 - [ ] **Step 5: 提交**
 
 ```bash
-git checkout -- AltSnap.exe hooks.dll altsnapr.o hooksr.o
 git add languages.h Lang/zh_CN.ini AltSnap.dni
 git commit -m "feat: 托盘收纳页的翻译、提示文案与默认 ini 注释"
 ```
