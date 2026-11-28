@@ -1,7 +1,7 @@
 *=========================================================================*
 *            ALTSNAP for Windows NT4/2000/XP/Vista/7/8.x/10/11            *
 *  Modified by Raymond Gillibert from original AltDrag by Stefan Sundin   *
-*                    release 1.70 (November 21, 2026)                     *
+*                    release 1.8.0 (November 28, 2026)                    *
 *-------------------------------------------------------------------------*
 * Download MEGA: https://mega.nz/folder/mW5ExCCT#gI8DQICICk-y4FIjxaqtGg   *
 * Download GitHub: https://github.com/RamonUnch/AltSnap/releases/         *
@@ -183,6 +183,30 @@ Note that this version has some more feature.
 
 ===========================================================================
 == CHANGELOG ==
+
+== AltSnap 1.8.0 ==
+
+ + Add "close to tray": windows of the applications listed in the new
+   "Tray" configuration page are collected to the system tray instead of
+   being closed when you click their close button or press Alt+F4.
+   * Every collected window gets its OWN tray icon with a unique guidItem,
+     so Windows keeps them independent instead of grouping all icons of
+     one process together. Left click restores the window, right click
+     gives restore / always on top / close / restore all.
+   * Icons are re-added when explorer.exe restarts and removed as soon as
+     the window is destroyed.
+   * New [TrayCollect] ini section: Enabled, Processes, MultiInstance, and
+     Windows (written at runtime, used to give the windows back after a
+     crash or a restart).
+   * Every listed application has a "single instance" checkbox (checked by
+     default) in the "Tray" page: launching it again brings back the
+     collected window instead of opening a second one.
+
+ + Windows of elevated applications cannot be hidden unless AltSnap also
+   runs elevated.
+
+ + English (built-in) and Simplified Chinese translations for the new UI
+   strings.
 
 == AltSnap 1.70 ==
 
@@ -813,7 +837,7 @@ Note that this version has some more feature.
    used to ensure that we are inside a titlebar and not caption buttons.
    This fixes an annoying Windows 10 bug.
 
- * Fixed, now the common french e dans l'o `œ` character is available in
+ * Fixed, now the common french e dans l'o `ï¿½` character is available in
    the default extended character menu (LATIN SMALL/CAPITAL LIGATURE OE).
 
  * Updated Chinese translation, thanks to @yatli.
@@ -1295,7 +1319,7 @@ Note that this version has some more feature.
 + New: AltDrag.xml file that can be imported from the Task Scheduler in
   order to setup auto start in elevated mode.
 
-+ Updated Spanish translation by *Carlos Sánchez*.
++ Updated Spanish translation by *Carlos Sï¿½nchez*.
 
 * Now an AMD64 build of AltDrag, can be compiled. builds are not provided
   because there are no real benefits for now (use mk64.bat).

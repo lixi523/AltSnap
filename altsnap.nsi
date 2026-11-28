@@ -2,7 +2,7 @@
 # define the name of the installer
 
 !define APP_NAME "AltSnap"
-!define APP_VERSION "1.70"
+!define APP_VERSION "1.8.0"
 # define the name of the installer
 OutFile "${APP_NAME}${APP_VERSION}-inst.exe"
 Name "${APP_NAME} ${APP_VERSION}"
