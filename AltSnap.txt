@@ -837,7 +837,7 @@ Note that this version has some more feature.
    used to ensure that we are inside a titlebar and not caption buttons.
    This fixes an annoying Windows 10 bug.
 
- * Fixed, now the common french e dans l'o `ï¿½` character is available in
+ * Fixed, now the common french e dans l'o `œ` character is available in
    the default extended character menu (LATIN SMALL/CAPITAL LIGATURE OE).
 
  * Updated Chinese translation, thanks to @yatli.
@@ -1319,7 +1319,7 @@ Note that this version has some more feature.
 + New: AltDrag.xml file that can be imported from the Task Scheduler in
   order to setup auto start in elevated mode.
 
-+ Updated Spanish translation by *Carlos Sï¿½nchez*.
++ Updated Spanish translation by *Carlos Sánchez*.
 
 * Now an AMD64 build of AltDrag, can be compiled. builds are not provided
   because there are no real benefits for now (use mk64.bat).
