@@ -85,7 +85,7 @@
   - `void CollectRemoveIndex(int i);`（只撤图标并移出表，不动窗口）
   - `void CollectSaveConfig(void);`（Task 3 实现，Task 1 先留空函数体）
   - `void CollectReloadConfig(void);`（Task 4 实现，Task 1 先留空函数体）
-  - `UINT collect_cbmsg;`（`RegisterWindowMessage(TEXT("AltSnap-TrayCollect"))`）
+  - `UINT collect_cbmsg;`（固定为 `WM_TRAYCOLLECTMSG`，与 `WindowProc` 的分支保持一致）
 
 - [ ] **Step 0: 记录基线**
 
@@ -127,7 +127,7 @@ typedef struct {
 
 `CollectWindow(HWND hwnd)` 顺序固定：
 1. `if (collect_count >= COLLECT_MAX) return;`（不吞点击，窗口照常关闭 —— 见 Review Focus #4）
-2. 已在表里 → 直接返回（Review Focus #3）。
+2. 已在表里 → 只 `ShowWindow(hwnd, SW_HIDE)` 后返回（图标已在，复用，不重复创建 —— 见 Review Focus #3）。
 3. exe 名：`TCHAR exe[MAX_PATH] = {0}; GetWindowProgName(hwnd, exe, ARR_SZ(exe)); if (!exe[0]) return;`
 4. 图标：`WM_GETICON(ICON_BIG)` → `WM_GETICON(ICON_SMALL2)` → `GetClassLongPtr(GCLP_HICON)` → `GetClassLongPtr(GCLP_HICONSM)` → `LoadIcon(g_hinst, MAKEINTRESOURCE(APP_ICON))`。
 5. `ShowWindow(hwnd, SW_HIDE); if (IsWindowVisible(hwnd)) { PostMessage(hwnd, WM_CLOSE, 0, 0); return; }`
@@ -135,11 +135,11 @@ typedef struct {
 7. `Shell_NotifyIcon(NIM_ADD, ...)` 失败重试 3 次、间隔 `Sleep(100)`；仍失败则 `ShowWindow(hwnd, SW_SHOW)` 回滚并 `return`。
 8. 写表和 `collect_count++`，然后 `CollectSaveConfig()`（本任务为空函数）。
 
-`CollectRestoreIndex(int i)`：`ShowWindow(hwnd, SW_SHOW)`；`SetForegroundWindowL(hwnd)`（`unfuck.h` 已有，别用裸 `SetForegroundWindow`）；`Shell_NotifyIcon(NIM_DELETE, ...)`；从表里移除（后面的元素前移），`collect_count--`，`CollectSaveConfig()`。
+`CollectRestoreIndex(int i)`：只 `ShowWindow(hwnd, SW_SHOW)` + `SetForegroundWindowL(hwnd)`（`unfuck.h` 已有，别用裸 `SetForegroundWindow`）；**不撤图标、不移出表**（图标常驻，之后再点 X 复用同一图标）。
 
 `CollectIconMessage`：`switch (LOWORD(lParam))` 的 `WM_LBUTTONUP` 与 `WM_LBUTTONDBLCLK` → 用 `wParam`（`uID`）找到下标后 `CollectRestoreIndex`。右键菜单留到 Task 2。
 
-`CollectInit(void)`：`collect_cbmsg = RegisterWindowMessage(TEXT("AltSnap-TrayCollect"));` 以及 `collect_count = 0; collect_nextid = 1;`。
+`CollectInit(void)`：`collect_cbmsg = WM_TRAYCOLLECTMSG;`（**不要**用 `RegisterWindowMessage`，它的返回值与 `WindowProc` 里的常量分支永不相等）以及 `collect_count = 0; collect_nextid = 1;`。
 
 - [ ] **Step 3: 让 hooks.dll 报告关闭动作**
 
@@ -262,7 +262,7 @@ Processes=notepad.exe
 
 逐条验证：
 1. 开记事本 → 点 X → 窗口消失，托盘多出一个记事本图标（不是 AltSnap 主图标）。
-2. 单击该图标 → 记事本回来并到前台。
+2. 单击该图标 → 记事本回来并到前台；图标**仍在**（图标代表“该应用已启用收纳”）。
 3. 再点 X 两次（快速连点）→ 只出现**一个**图标，表里只有一条（图标数不会变成 2）。
 4. 开 3 个记事本、各自点 X → 3 个独立图标；在 Win10 上拖动其中一个，其余不跟随。
 5. 把记事本加入列表后，用 `mspaint.exe`（未列入）点 X → 正常关闭。
@@ -319,7 +319,7 @@ SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, NULL, CollectWinEven
 `make -j2`，零 error、零新 warning。然后：
 1. 收纳两个记事本 → 右键其中一个图标 → 「置顶」→ 该窗口无边框置顶标记；再点一次取消。
 2. 右键 → 「关闭」→ 该窗口真关闭、图标消失、另一个不受影响。
-3. 右键 → 「全部还原」→ 两个窗口都回来、所有图标消失。
+3. 右键 → 「全部还原」→ 两个窗口都回来，图标保留（图标常驻，不随还原消失）。
 4. 收纳一个记事本 → 在任务管理器里结束该记事本进程 → 图标**自动消失**（Review Focus #2）。
 5. 收纳一个记事本 → 任务管理器 → 重启 `explorer.exe` → 图标自动回来。
 6. 收纳后立刻点 X（应用瞬间退出，如某些启动器）→ 不留幽灵图标（Review Focus #1）。

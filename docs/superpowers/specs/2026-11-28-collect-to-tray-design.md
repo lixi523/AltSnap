@@ -19,7 +19,7 @@
 
 - **G1** 设置里新增一页，可增删“要收纳的应用”（exe 文件名，精确匹配、大小写不敏感；整项写成 `*` 表示所有应用）。
 - **G2** 列表内应用的窗口，点关闭按钮或按 Alt+F4 时被隐藏，托盘出现一个**可被系统单独排列**的图标。
-- **G3** 单击图标还原对应窗口；右键图标有「还原 / 置顶 / 关闭 / 全部还原」。
+- **G3** 单击图标还原对应窗口；图标在窗口还原后**继续保留**（图标代表“该应用已启用收纳”，不是“当前有窗口被隐藏”），只在窗口销毁、右键「关闭」、从列表移除或 AltSnap 退出时才撤掉；右键图标有「还原 / 置顶 / 关闭 / 全部还原」。
 - **G4** AltSnap 退出、崩溃或系统重启后，不留下用户无法还原的"隐形窗口"。
 - **G5** 未列入列表的应用，行为与现在完全一致。
 - **G6** 每个列入的应用带一个「唯一实例」开关（默认勾选）：勾选时，若该应用已有窗口在托盘，再次启动它不会出现第二个窗口，而是把托盘里那个还原并置前，新窗口被关掉；取消勾选则允许并行多开。
@@ -179,7 +179,7 @@ typedef struct {
 static collect_item_t collect_items[COLLECT_MAX];
 static int collect_count;
 static UINT collect_nextid = 1;
-static UINT WM_TRAYCOLLECT_RT;   /* 运行时取 RegisterWindowMessage，见下 */
+static UINT collect_cbmsg = WM_TRAYCOLLECTMSG;   /* 固定消息号，必须与 WindowProc 的分支一致 */
 ```
 
 **结构与职责**
@@ -187,7 +187,7 @@ static UINT WM_TRAYCOLLECT_RT;   /* 运行时取 RegisterWindowMessage，见下 
 - `CollectLoadConfig()` — 读 `[TrayCollect] Enabled`；读 `Windows=` 并按 §7.5 处理。
 - **主程序侧不再二次判断 `Enabled`**：`CollectWindow()` 只信任 hooks.dll 的通知。两侧各自读 ini，一旦把开关做两次判断，就可能出现"hooks 已经吞掉点击、主程序却拒绝收纳"的僵尸窗口。`Enabled` 只影响 hooks.dll 是否装载列表。
 - `CollectWindow(HWND hwnd)` — 由 `WM_TRAYCOLLECT` 调用：
-  1. 已在本表 → 直接返回。
+  1. 已在本表 → `ShowWindow(hwnd, SW_HIDE)` 后返回（图标已在，复用，不重复创建）。
   2. 取窗口图标：`WM_GETICON(ICON_BIG)` → `WM_GETICON(ICON_SMALL2)` → `GCLP_HICON` → `GCLP_HICONSM` → 兜底 `LoadIcon(g_hinst, MAKEINTRESOURCE(APP_ICON))`。
   3. `ShowWindow(hwnd, SW_HIDE);` 然后 `if (IsWindowVisible(hwnd)) { PostMessage(hwnd, WM_CLOSE, 0, 0); return; }` — **反目标守卫**：藏不住就把用户原本的关闭意图执行掉，绝不制造僵尸窗口（提权窗口走这条）。
   4. 组通知结构。**自定义一份 V3 结构**（照 `tray.c` 的做法，不依赖 `NOTIFYICONDATAW` 这个名字，因为同一份源码要同时支持 A/W 构建）：
@@ -201,13 +201,13 @@ static UINT WM_TRAYCOLLECT_RT;   /* 运行时取 RegisterWindowMessage，见下 
      } collect_nid_t;
      ```
 
-     填 `hWnd = g_hwnd`、`uID = collect_nextid++`、`uFlags = NIF_MESSAGE|NIF_ICON|NIF_TIP`（`WinVer >= VISTA` 时再加 `NIF_GUID`）、`uCallbackMessage = WM_TRAYCOLLECT_RT`、`szTip` = 窗口标题（截断到 127）、`guidItem = CollectGuid(exename, hwnd)`。`cbSize` 用上面这个结构的尺寸；`NIM_ADD` 失败时退到 `tray.c` 那种最小结构（只有 `szTip[64]`、无 `guidItem`）重试一次，兼容旧系统。
+     填 `hWnd = g_hwnd`、`uID = collect_nextid++`、`uFlags = NIF_MESSAGE|NIF_ICON|NIF_TIP`（`WinVer >= VISTA` 时再加 `NIF_GUID`）、`uCallbackMessage = collect_cbmsg`、`szTip` = 窗口标题（截断到 127）、`guidItem = CollectGuid(exename, hwnd)`。`cbSize` 用上面这个结构的尺寸；`NIM_ADD` 失败时退到 `tray.c` 那种最小结构（只有 `szTip[64]`、无 `guidItem`）重试一次，兼容旧系统。
   5. `Shell_NotifyIcon(NIM_ADD)`（失败重试 3 次，间隔 100ms，与 `tray.c:UpdateTray` 同款容错）；彻底失败则 `ShowWindow(hwnd, SW_SHOW)` 回滚并 `LOG`。
   6. 记录 `pid`、`CollectSaveConfig()`。
 - `CollectGuid(exe, hwnd)` — 用 FNV-1a 对 `"AltSnap/Collect/<exe>/<hwnd>"` 派生 GUID（第 7 字节置 4、第 9 字节置 `10xx` 变体）。**每个窗口必须不同**：GUID 相同会被 Windows 当成同一个图标。
-- `CollectRestore(int i)` — `ShowWindow(hwnd, SW_SHOW)` + `SetForegroundWindow(hwnd)`；`NIM_DELETE`；从表里移除；`CollectSaveConfig()`。
-- `CollectRemove(int i)` — 只撤图标（窗口已自己销毁时用）。
-- 图标回调（`WM_TRAYCOLLECT_RT`）：
+- `CollectRestore(int i)` — 只 `ShowWindow(hwnd, SW_SHOW)` + `SetForegroundWindow(hwnd)`；**不撤图标、不移出表**（G3：图标常驻，之后再点 X 复用同一图标）。
+- `CollectRemove(int i)` — 撤图标 + 移出表，不动窗口（窗口已自己销毁、右键「关闭」、从列表移除时用）。
+- 图标回调（`WM_TRAYCOLLECTMSG`，即 `WM_USER+22`）：
   - `WM_LBUTTONUP` / `WM_LBUTTONDBLCLK` → `CollectRestore`
   - `WM_RBUTTONUP` → 右键菜单：`SetForegroundWindow(g_hwnd); PostMessage(g_hwnd, WM_NULL, 0, 0);` 再 `TrackPopupMenu`（托盘菜单的标准做法，`tray.c:ShowContextMenu` 同款），菜单项「还原 / 置顶 / 关闭 / — / 全部还原」。菜单命令用 `CreatePopupMenu` 的返回 id 映射到表下标。
   - 不调用 `NIM_SETVERSION`：沿用老式 `WM_*` 回调，与现有 `tray.c` 一致，少一个平台差异面。
@@ -231,7 +231,7 @@ SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, NULL, CollectWinEventPro
 `CollectWinEventProc()` 内先做通用过滤：`idObject == OBJID_WINDOW && idChild == CHILDID_SELF`，且 `hwnd` 本身是顶层（`GetAncestor(hwnd, GA_ROOT) == hwnd`）。然后分事件：
 
 - `EVENT_OBJECT_DESTROY` → 若在本表里，`NIM_DELETE` + 移除条目。
-- `EVENT_OBJECT_CREATE` / `EVENT_OBJECT_SHOW` → `CollectRedirectMaybe(hwnd)`。
+- `EVENT_OBJECT_CREATE` / `EVENT_OBJECT_SHOW` → 若 `hwnd` 已在本表，直接返回（这是我们收纳过的窗口重新显示，不是新实例；图标保留）；否则 `CollectRedirectMaybe(hwnd)`。
 
 `is_fresh_app_window(hwnd)` 启发式（全部满足才算“真的冒出一个新实例”）：
 
@@ -250,10 +250,11 @@ SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, NULL, CollectWinEventPro
 1. 取 `exename`；不在 `Processes` 命中或命中不到，返回。
 2. 在 `MultiInstance` 里命中（用户取消了勾选）→ 返回，允许并行多开。
 3. 在本表里找一个 `collect_item_t` 且其 `exe` 与 `exename` 相同 → 没有则返回（应用本来就没被收纳，不干预）。
-4. `CollectRestore(idx)` 先还原已有窗口（它会置前，新窗口自然失去前台）。
-5. 把 `hwnd` 放进 `collect_pending_close[]`（定长 4），`SetTimer(g_hwnd, COLLECT_REDIR_TIMER, 400, NULL)`；定时器到期时对仍 `IsWindow()` 的项 `PostMessage(hwnd, WM_CLOSE, 0, 0)`，然后清空。
+4. 该项的 `pid` 与 `hwnd` 的进程相同 → 返回（同进程的另一个窗口不是新实例，关掉会丢用户数据）。
+5. `CollectRestore(idx)` 先还原已有窗口（它会置前，新窗口自然失去前台；图标保留）。
+6. 把 `hwnd` 放进 `collect_pending_close[]`（定长 4），`SetTimer(g_hwnd, COLLECT_REDIR_TIMER, 400, NULL)`；定时器到期时对仍 `IsWindow()` 的项 `PostMessage(hwnd, WM_CLOSE, 0, 0)`，然后清空。
    延迟 400ms 是必要的：`EVENT_OBJECT_CREATE` 往往在窗口完成初始化之前到达，立即发 `WM_CLOSE` 可能被应用忽略或导致它重建。
-6. `LOG` 记一行（exe 名 + 新旧 hwnd），方便验证时统计误判。
+7. `LOG` 记一行（exe 名 + 新旧 hwnd），方便验证时统计误判。
 
 **接线（`altsnap.c` 的 `WindowProc`）**
 
@@ -267,7 +268,7 @@ SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, NULL, CollectWinEventPro
 }
 ```
 
-另外：`InitTray()` 之后调 `CollectInit()`（注册 `WM_TRAYCOLLECT_RT = RegisterWindowMessage(TEXT("AltSnap-TrayCollect"))`、读配置、装 §7.3 那两个 `SetWinEventHook`）；`WM_TASKBARCREATED` 分支追加 `CollectReAddAll()`；`WM_DESTROY` 分支追加 `CollectShutdown()`。
+另外：`InitTray()` 之后调 `CollectInit()`（`collect_cbmsg = WM_TRAYCOLLECTMSG`、读配置、装 §7.3 的 `SetWinEventHook`（`EVENT_OBJECT_CREATE..EVENT_OBJECT_SHOW`））；`WM_TASKBARCREATED` 分支追加 `CollectReAddAll()`；`WM_DESTROY` 分支追加 `CollectShutdown()`。
 
 `hooks.h` 只需加两个消息号：`WM_TRAYCOLLECT`（hooks.dll → 主程序）与 `WM_TRAYCOLLECTMSG`（`Shell_NotifyIcon` 回调）。同进程通信，不需要 `ChangeWindowMessageFilter`。
 
@@ -299,7 +300,7 @@ SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, NULL, CollectWinEventPro
 
 ### 7.5 持久化与"隐形窗口"防线
 
-- 每次收纳 / 还原都重写 `[TrayCollect] Windows=hwnd:pid,...`。
+- 每次收纳 / 移除条目时重写 `[TrayCollect] Windows=hwnd:pid,...`（还原窗口不重写：图标与记录常驻）。
 - **启动时**（`CollectInit`）：逐条校验 `IsWindow(hwnd)` 为真、`GetWindowThreadProcessId == pid`、且 `!IsWindowVisible(hwnd)` → `ShowWindow(hwnd, SW_SHOW)`；然后清空该键。
 - **决定（我的判断，请核对）**：启动时一律"还给用户"，不重建图标。重建图标看着更聪明，但只要恢复入口在启动瞬间丢一次，那个窗口就再也找不回来了；安全优先。
 - AltSnap 正常退出：还原所有窗口（§7.3 `CollectShutdown`），不留"退出后窗口消失"的口实。
@@ -347,7 +348,7 @@ SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, NULL, CollectWinEventPro
 ## 9. 验证清单（每条都要能手动复现）
 
 1. `[TrayCollect]` 为空时，关闭任意窗口行为不变（回归）。
-2. 加入 `notepad.exe`：开记事本 → 点 X → 窗口消失、托盘多一个记事本图标；点图标 → 窗口回来。
+2. 加入 `notepad.exe`：开记事本 → 点 X → 窗口消失、托盘多一个记事本图标；点图标 → 窗口回来，**图标仍在**；再点 X → 窗口再次消失，图标不重复。
 3. 同一应用开 3 个窗口 → 3 个独立图标；Win10 上拖动其中一个，其余不跟随（Traynard 的核心诉求）。Win11 ≥ 22563 改测"每个图标可单独显隐"。
 4. Alt+F4 同样收纳。
 5. 右键图标 → 还原 / 置顶 / 关闭 / 全部还原 全部生效。
@@ -367,3 +368,13 @@ SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW, NULL, CollectWinEventPro
 - `NIM_ADD` 失败后的最小结构回退是否真的需要（若实测 Vista+ 一次成功，可删掉这条回退）。
 - 重定向的延迟关闭阈值（本设计取 400ms）与 `collect_pending_close` 队列长度（取 4）的实测标定；单应用连续快速启动多次时是否会丢事件。
 - `is_fresh_app_window()` 各条件的取舍：实测中哪些条件在主力应用上误杀最多，可单独放宽或收紧（例如去掉 `WS_CAPTION` 以覆盖无边框窗口）。
+
+## 11. 修订记录（实现/验收阶段）
+
+以下偏差已在 `collect.c` / `hooks.c` 中修正，本文档已同步：
+
+1. **托盘图标改为常驻**（§G3、§7.3）：原设计“还原即撤图标”。用户实测后明确语义为“图标代表该应用已启用收纳”，因此 `CollectRestore` 只显示窗口，不撤图标、不移出表；条目只在窗口销毁 / 右键「关闭」/ 移出列表 / AltSnap 退出时删除。
+2. **点 X 需要常驻鼠标钩子**（§7.2）：`LowLevelMouseProc` 平时只在 Alt 按下时安装，默认配置下点 X 根本不经过钩子。`conf.keepMousehook` 计算时追加 `|| CollectList.length`。
+3. **图标回调消息号**（§7.3）：`RegisterWindowMessage` 返回的动态 id 与 `WindowProc` 里的 `WM_TRAYCOLLECTMSG` 永不相等，改为固定使用 `WM_TRAYCOLLECTMSG`。
+4. **同进程窗口不再被当新实例**（§7.3 重定向第 4 步）：同 `pid` 的另一个窗口会触发唯一实例逻辑并被 `WM_CLOSE`，加上 pid 判断。
+

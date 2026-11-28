@@ -26,6 +26,20 @@ Spec：`docs/superpowers/specs/2026-11-28-collect-to-tray-design.md`
 | 静止代码路径开销 | `Enabled=0` 或 `Processes` 为空时，鼠标/键盘钩子分支在 `CollectList.length` 处短路 |
 | 钩子热路径安全 | 只用 `GetWindowProgName`（OpenProcess）与 `HitTestTimeoutL`（`SendMessageTimeout` 255ms）；无 `GetWindowText` / `HitTestTimeoutbl` / `blacklisted` |
 
+## 2026-11-28 实机验证（已执行）
+
+验证对象：`D:\操作系统\AltSnap-bin-x64`（本地 `make -fMakefileX64` 构建产物），测试窗口为自建 `TrayTest`（临时加入 `Processes`，验后已恢复）。
+
+| 场景 | 结果 |
+| --- | --- |
+| 点 X | 窗口隐藏，`[TrayCollect] Windows=` 写入 `hwnd:pid` |
+| 点托盘图标 | 窗口还原并置前，**图标保留**，`Windows=` 仍保留 |
+| 再次点 X | 窗口再次隐藏，条目/图标不重复创建 |
+| 窗口自行重新显示 | 条目与图标保留（不再当作新实例关闭） |
+| 窗口销毁 | `Windows=` 清空，图标删除 |
+
+仍未执行：Alt+F4（用例 4）、多窗口独立图标（3）、explorer 重启（7）、强杀还原（9）、唯一实例（13–16）。
+
 ## 待执行：spec §9 的 17 条
 
 准备 ini（`%APPDATA%\AltSnap\AltSnap.ini` 或 exe 同目录），改完重启 AltSnap：
@@ -40,7 +54,7 @@ MultiInstance=
 | # | 用例 | 期望 | 结果 |
 | --- | --- | --- | --- |
 | 1 | `Processes` 为空时关任意窗口 | 行为不变（回归） | ☐ |
-| 2 | 记事本点 X | 窗口消失 + 托盘多一个记事本图标；点图标还原 | ☐ |
+| 2 | 记事本点 X | 窗口消失 + 托盘多一个记事本图标；点图标还原，图标保留 | ☐ |
 | 3 | 同一应用开 3 个窗口各自点 X | 3 个独立图标；Win10 上拖动其中一个其余不跟随 | ☐ |
 | 4 | Alt+F4 | 同样收纳 | ☐ |
 | 5 | 右键图标 | 还原 / 置顶 / 关闭 / 全部还原 全部生效 | ☐ |

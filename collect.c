@@ -152,18 +152,17 @@ static void CollectRemoveIndex(int i)
     CollectSaveConfig();
 }
 
+/* Show the window again. The tray icon deliberately stays: it represents
+ * "this application is collected to tray", not "this window is hidden". */
 static void CollectRestoreIndex(int i)
 {
     HWND hwnd;
     if (i < 0 || i >= collect_count) return;
     hwnd = collect_items[i].hwnd;
-    CollectDropIcon(i);
-    collect_items[i] = collect_items[--collect_count];
     if (IsWindow(hwnd)) {
         ShowWindow(hwnd, SW_SHOW);
         SetForegroundWindow(hwnd);
     }
-    CollectSaveConfig();
 }
 
 static void CollectWindow(HWND hwnd)
@@ -175,9 +174,11 @@ static void CollectWindow(HWND hwnd)
     int i;
 
     if (!hwnd || !IsWindow(hwnd)) return;
-    if (collect_count >= COLLECT_MAX) return;      /* do not swallow the click */
-    if (CollectFindIndex(hwnd) >= 0) return;       /* already collected */
-    if (!GetWindowProgName(hwnd, exe, ARR_SZ(exe))) return;
+    i = CollectFindIndex(hwnd);
+    if (i < 0) {
+        if (collect_count >= COLLECT_MAX) return;      /* do not swallow the click */
+        if (!GetWindowProgName(hwnd, exe, ARR_SZ(exe))) return;
+    }
 
     ShowWindow(hwnd, SW_HIDE);
     if (IsWindowVisible(hwnd)) {
@@ -186,6 +187,7 @@ static void CollectWindow(HWND hwnd)
         PostMessage(hwnd, WM_CLOSE, 0, 0);
         return;
     }
+    if (i >= 0) return;   /* icon already in the tray: the window is hidden again */
 
     GetWindowThreadProcessId(hwnd, &pid);
     collect_items[collect_count].hwnd = hwnd;
@@ -275,6 +277,7 @@ static void CollectClosePending(void)
 static void CollectRedirectMaybe(HWND hwnd)
 {
     TCHAR exe[MAX_PATH] = {0};
+    DWORD pid = 0;
     int i;
     size_t k;
 
@@ -285,10 +288,14 @@ static void CollectRedirectMaybe(HWND hwnd)
     if (!collect_app_matches(collect_processes, exe)) return;
     if (collect_app_matches(collect_multi, exe)) return;  /* user allowed multi */
 
+    GetWindowThreadProcessId(hwnd, &pid);
     for (i = 0; i < collect_count; i++) {
         if (!lstrcmpi(collect_items[i].exe, exe)) break;
     }
     if (i >= collect_count) return;   /* this application is not in the tray */
+    /* Same live process: another window of the collected application, not a
+     * freshly started instance. Closing it would lose the user's work. */
+    if (collect_items[i].pid == pid) return;
 
     CollectRestoreIndex(i);
 
@@ -321,8 +328,9 @@ static void CollectCloseIndex(int i)
 
 static void CollectRestoreAll(void)
 {
-    while (collect_count > 0)
-        CollectRestoreIndex(collect_count - 1);
+    int i;
+    for (i = 0; i < collect_count; i++)
+        CollectRestoreIndex(i);
 }
 
 /* explorer.exe restarted: every Shell_NotifyIcon registration is gone. */
@@ -414,9 +422,15 @@ static void CALLBACK CollectWinEventProc(HWINEVENTHOOK hook, DWORD event, HWND h
     if (event == EVENT_OBJECT_DESTROY) {
         i = CollectFindIndex(hwnd);
         if (i >= 0) CollectRemoveIndex(i);
-    } else if (event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_SHOW) {
-        CollectRedirectMaybe(hwnd);
+        return;
     }
+    if (event != EVENT_OBJECT_CREATE && event != EVENT_OBJECT_SHOW) return;
+
+    /* A known window is never a fresh instance: the tray icon stays, the
+     * entry only disappears when the window itself is destroyed. */
+    i = CollectFindIndex(hwnd);
+    if (i >= 0) return;
+    CollectRedirectMaybe(hwnd);
 }
 
 static HWINEVENTHOOK collect_destroy_hook = NULL;
@@ -515,7 +529,9 @@ static void CollectShutdown(void)
 
 static void CollectInit(void)
 {
-    collect_cbmsg = RegisterWindowMessage(TEXT("AltSnap-TrayCollect"));
+    /* Must stay in sync with WindowProc's WM_TRAYCOLLECTMSG case: a dynamic
+     * RegisterWindowMessage() id would never match that constant. */
+    collect_cbmsg = WM_TRAYCOLLECTMSG;
     collect_count = 0;
     collect_nextid = 1;
     collect_destroy_hook =

@@ -6896,7 +6896,8 @@ __declspec(dllexport) WNDPROC WINAPI Load(HWND mainhwnd, const TCHAR *inipath)
     conf.keepMousehook = ((conf.TTBActions&1) // titlebar action w/o Alt
                        || conf.InactiveScroll // Inactive scrolling
                        || conf.Hotclick[0] // Hotclick
-                       || conf.LongClickMove); // Move with long click
+                       || conf.LongClickMove // Move with long click
+                       || CollectList.length); // Close-to-tray needs the click hook
     // Capture main hwnd from caller. This is also the cursor wnd
     g_mainhwnd = mainhwnd;
 
